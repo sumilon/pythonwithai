@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0"/>
+    <meta name="description" content="SWP Calculator with inflation adjustment — plan your systematic withdrawal from a lumpsum corpus."/>
+    <title>SWP Calculator — Inflation Adjusted</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com"/>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
+
+    <style>
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+        :root{
+          --bg:#0d0f14;
+          --bg2:#13161e;
+          --bg3:#1a1e28;
+          --surface:#1e2330;
+          --surface2:#252c3d;
+          --bdr:#2a3047;
+          --bdr2:#353d56;
+          --t1:#e8eaf0;
+          --t2:#8b93ab;
+          --t3:#555e78;
+          --blue:#4f8ef7;
+          --blue2:#3a6fd4;
+          --blue-glow:rgba(79,142,247,.15);
+          --green:#34c97b;
+          --green-bg:rgba(52,201,123,.1);
+          --red:#f05252;
+          --red-bg:rgba(240,82,82,.1);
+          --amber:#f5a623;
+          --amber-bg:rgba(245,166,35,.1);
+          --fh:'Syne',sans-serif;
+          --fm:'JetBrains Mono',monospace;
+          --r:12px;
+          --rs:8px;
+          --ease:.17s ease;
+          --sp-sm:8px;
+          --sp-md:16px;
+          --sp-lg:24px;
+          --topbar-h:52px;
+        }
+
+        html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+        body{
+          background:var(--bg);
+          color:var(--t1);
+          font-family:var(--fm);
+          min-height:100vh;
+          font-size:14px;
+          line-height:1.6;
+          overflow-x:hidden;
+          background-image:
+            linear-gradient(rgba(79,142,247,.025) 1px,transparent 1px),
+            linear-gradient(90deg,rgba(79,142,247,.025) 1px,transparent 1px);
+          background-size:40px 40px;
+        }
+
+        /* ── TOP BAR ── */
+        .topbar{
+          position:sticky;top:0;z-index:100;
+          display:flex;align-items:center;justify-content:space-between;
+          gap:var(--sp-sm);
+          padding:0 var(--sp-md);
+          height:var(--topbar-h);
+          background:rgba(13,15,20,.92);
+          backdrop-filter:blur(14px);
+          -webkit-backdrop-filter:blur(14px);
+          border-bottom:1px solid var(--bdr);
+          overflow:hidden;
+        }
+        .topbar-brand{
+          display:flex;align-items:center;gap:8px;
+          font-family:var(--fh);font-size:14px;font-weight:600;
+          color:var(--t1);white-space:nowrap;min-width:0;
+        }
+        .brand-dot{
+          width:8px;height:8px;flex-shrink:0;border-radius:50%;
+          background:var(--blue);box-shadow:0 0 8px var(--blue);
+        }
+        .topbar-badge{
+          flex-shrink:0;font-size:10px;letter-spacing:.08em;
+          text-transform:uppercase;padding:3px 9px;border-radius:20px;
+          border:1px solid var(--bdr2);color:var(--t2);
+        }
+        @media(max-width:380px){.topbar-badge{display:none}}
+
+        /* ── HERO ── */
+        .hero{
+          padding:clamp(1.75rem,5vw,3.5rem) var(--sp-md) var(--sp-lg);
+          max-width:960px;margin:0 auto;
+          overflow-wrap:break-word;word-break:break-word;
+        }
+        .eyebrow{
+          font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+          color:var(--blue);margin-bottom:var(--sp-sm);
+        }
+        .hero h1{
+          font-family:var(--fh);
+          font-size:clamp(1.65rem,6vw,3rem);
+          font-weight:700;line-height:1.12;
+          letter-spacing:-.025em;color:var(--t1);
+          margin-bottom:var(--sp-sm);
+        }
+        .hero h1 em{
+          font-style:normal;
+          background:linear-gradient(130deg,#4f8ef7 20%,#a78bfa 80%);
+          -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+          background-clip:text;
+        }
+        .hero-sub{
+          font-size:clamp(11px,2.5vw,13px);color:var(--t2);
+          line-height:1.75;max-width:min(460px,100%);
+        }
+
+        /* ── PAGE LAYOUT ── */
+        .main{
+          max-width:960px;margin:0 auto;
+          padding:0 var(--sp-md) clamp(2rem,6vw,4rem);
+          display:flex;flex-direction:column;gap:var(--sp-md);
+        }
+        @media(min-width:640px){.main{gap:var(--sp-lg)}}
+
+        /* ── CARD ── */
+        .card{
+          background:var(--surface);
+          border:1px solid var(--bdr);
+          border-radius:var(--r);
+          padding:clamp(1rem,3.5vw,1.5rem);
+          min-width:0;overflow:hidden;
+          animation:up .32s ease both;
+        }
+        .card:nth-child(2){animation-delay:.06s}
+        .card:nth-child(3){animation-delay:.12s}
+        .card:nth-child(4){animation-delay:.18s}
+        @keyframes up{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+
+        .card-head{
+          display:flex;align-items:center;justify-content:space-between;
+          flex-wrap:wrap;gap:var(--sp-sm);margin-bottom:var(--sp-md);
+        }
+        .card-title{
+          font-family:var(--fh);font-size:11px;font-weight:600;
+          letter-spacing:.07em;text-transform:uppercase;color:var(--t2);
+          display:flex;align-items:center;gap:6px;
+        }
+        .card-title svg{width:13px;height:13px;opacity:.5;flex-shrink:0}
+
+        /* ── INPUTS GRID ── */
+        .inputs-grid{
+          display:grid;
+          grid-template-columns:1fr;
+          gap:var(--sp-md);
+        }
+        @media(min-width:420px){.inputs-grid{grid-template-columns:1fr 1fr}}
+        @media(min-width:700px){.inputs-grid{grid-template-columns:repeat(3,1fr)}}
+        @media(min-width:900px){.inputs-grid{grid-template-columns:repeat(5,1fr)}}
+
+        .inp-group{display:flex;flex-direction:column;gap:5px;min-width:0}
+        .inp-label{
+          font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+          color:var(--t3);font-weight:500;
+        }
+        .inp-wrap{
+          display:flex;align-items:stretch;
+          background:var(--bg2);border:1px solid var(--bdr);
+          border-radius:var(--rs);overflow:hidden;
+          transition:border-color var(--ease),box-shadow var(--ease);
+          min-width:0;
+        }
+        .inp-wrap:focus-within{
+          border-color:var(--blue);
+          box-shadow:0 0 0 3px var(--blue-glow);
+        }
+        .adorn{
+          display:flex;align-items:center;padding:0 9px;
+          font-size:12px;font-weight:500;color:var(--t3);
+          background:var(--bg3);white-space:nowrap;flex-shrink:0;
+        }
+        .adorn-l{border-right:1px solid var(--bdr)}
+        .adorn-r{border-left:1px solid var(--bdr)}
+        .inp-wrap input[type=number]{
+          flex:1;min-width:0;border:none;background:transparent;
+          padding:9px 10px;font-size:13px;
+          font-family:var(--fm);color:var(--t1);outline:none;
+        }
+        .inp-wrap input[type=number]::-webkit-inner-spin-button,
+        .inp-wrap input[type=number]::-webkit-outer-spin-button{opacity:.35}
+
+        /* ── SLIDER ── */
+        .slider-row{
+          display:flex;align-items:center;gap:8px;
+          margin-top:3px;min-width:0;
+        }
+        .slider-row input[type=range]{
+          flex:1;min-width:0;height:3px;cursor:pointer;
+          -webkit-appearance:none;appearance:none;
+          background:var(--bdr2);border-radius:2px;
+        }
+        .slider-row input[type=range]::-webkit-slider-thumb{
+          -webkit-appearance:none;appearance:none;
+          width:14px;height:14px;border-radius:50%;
+          background:var(--blue);border:2px solid var(--bg);
+          box-shadow:0 0 5px var(--blue-glow);
+          transition:transform .1s;
+        }
+        .slider-row input[type=range]:active::-webkit-slider-thumb{transform:scale(1.25)}
+        .slider-row input[type=range]::-moz-range-thumb{
+          width:14px;height:14px;border-radius:50%;
+          background:var(--blue);border:2px solid var(--bg);cursor:pointer;
+        }
+        .sv{
+          width:42px;flex-shrink:0;text-align:right;
+          font-size:11px;font-weight:500;color:var(--blue);
+        }
+
+        /* ── CALCULATE BUTTON ── */
+        .calc-btn{
+          margin-top:var(--sp-md);width:100%;min-height:44px;
+          padding:12px var(--sp-md);
+          background:var(--blue);color:#fff;border:none;
+          border-radius:var(--rs);
+          font-family:var(--fh);font-size:13px;font-weight:600;
+          letter-spacing:.07em;text-transform:uppercase;cursor:pointer;
+          display:flex;align-items:center;justify-content:center;gap:8px;
+          transition:background var(--ease),transform var(--ease),box-shadow var(--ease);
+          box-shadow:0 4px 18px rgba(79,142,247,.28);
+        }
+        .calc-btn:hover{background:var(--blue2);transform:translateY(-1px);box-shadow:0 6px 24px rgba(79,142,247,.4)}
+        .calc-btn:active{transform:none}
+        .calc-btn svg{width:15px;height:15px;flex-shrink:0}
+
+        /* ── VALIDATION MESSAGE ── */
+        .val-msg{
+          margin-top:8px;font-size:11px;color:var(--red);
+          min-height:16px;
+        }
+
+        /* ── METRICS GRID ── */
+        .metrics-grid{
+          display:grid;
+          grid-template-columns:1fr 1fr;
+          gap:var(--sp-sm);
+        }
+        @media(min-width:600px){.metrics-grid{grid-template-columns:repeat(4,1fr)}}
+
+        .metric{
+          background:var(--bg2);border:1px solid var(--bdr);
+          border-radius:var(--rs);padding:12px 13px;
+          position:relative;overflow:hidden;min-width:0;
+        }
+        .metric::before{
+          content:'';position:absolute;top:0;left:0;right:0;height:2px;
+        }
+        .m-blue::before{background:var(--blue)}
+        .m-green::before{background:var(--green)}
+        .m-red::before{background:var(--red)}
+        .m-amber::before{background:var(--amber)}
+
+        .m-label{
+          font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+          color:var(--t3);margin-bottom:6px;font-weight:500;
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+        }
+        .m-val{
+          font-family:var(--fh);
+          font-size:clamp(.95rem,2.8vw,1.3rem);
+          font-weight:700;line-height:1.2;color:var(--t1);
+          overflow-wrap:break-word;word-break:break-all;
+        }
+        .t-green{color:var(--green)}
+        .t-red{color:var(--red)}
+        .t-amber{color:var(--amber)}
+        .m-sub{font-size:10px;color:var(--t3);margin-top:3px;line-height:1.4}
+
+        /* ── INSIGHT BANNER ── */
+        .insight{
+          display:flex;align-items:flex-start;gap:10px;
+          padding:11px 13px;border-radius:var(--rs);
+          font-size:12px;line-height:1.65;
+          margin-top:var(--sp-md);
+          overflow-wrap:break-word;word-break:break-word;
+        }
+        .ins-green{background:var(--green-bg);border:1px solid rgba(52,201,123,.2);color:#7de8b0}
+        .ins-amber{background:var(--amber-bg);border:1px solid rgba(245,166,35,.2);color:#fac96a}
+        .ins-red{background:var(--red-bg);border:1px solid rgba(240,82,82,.2);color:#f9a0a0}
+        .ins-icon{flex-shrink:0;font-size:13px;margin-top:1px;line-height:1}
+
+        /* ── CHART ── */
+        .chart-top{
+          display:flex;align-items:center;justify-content:space-between;
+          flex-wrap:wrap;gap:var(--sp-sm);margin-bottom:var(--sp-sm);
+        }
+        .legend{display:flex;gap:12px;flex-wrap:wrap}
+        .leg-item{
+          display:flex;align-items:center;gap:5px;
+          font-size:10px;color:var(--t2);white-space:nowrap;
+        }
+        .leg-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+
+        .chart-tabs{display:flex;gap:4px}
+        .tab-btn{
+          padding:4px 11px;border-radius:6px;min-height:30px;
+          font-size:10px;font-weight:500;font-family:var(--fm);
+          letter-spacing:.04em;text-transform:uppercase;
+          border:1px solid var(--bdr);background:transparent;
+          color:var(--t2);cursor:pointer;
+          transition:all var(--ease);
+        }
+        .tab-btn.active,.tab-btn:hover{
+          background:var(--surface2);color:var(--t1);border-color:var(--bdr2);
+        }
+        @media(max-width:479px){.chart-tabs{display:none}}
+
+        .chart-wrap{
+          position:relative;width:100%;
+          height:clamp(200px,45vw,340px);
+        }
+
+        /* ── TABLE ── */
+        .tbl-controls{
+          display:flex;align-items:center;flex-wrap:wrap;
+          gap:var(--sp-sm);margin-bottom:var(--sp-md);
+        }
+        .search-box{
+          flex:1;min-width:120px;max-width:220px;
+          display:flex;align-items:center;gap:6px;
+          background:var(--bg2);border:1px solid var(--bdr);
+          border-radius:var(--rs);padding:6px 10px;
+          transition:border-color var(--ease);
+        }
+        .search-box:focus-within{border-color:var(--blue)}
+        .search-box svg{width:12px;height:12px;flex-shrink:0;opacity:.4}
+        .search-box input{
+          flex:1;min-width:0;background:none;border:none;outline:none;
+          font-family:var(--fm);font-size:12px;color:var(--t1);
+        }
+        .search-box input::placeholder{color:var(--t3)}
+
+        .filter-btns{display:flex;gap:4px;flex-wrap:wrap}
+        .f-btn{
+          padding:4px 10px;min-height:28px;border-radius:20px;
+          font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:500;
+          border:1px solid var(--bdr);background:transparent;
+          color:var(--t3);cursor:pointer;transition:all var(--ease);white-space:nowrap;
+        }
+        .f-btn.active{background:var(--surface2);color:var(--t1);border-color:var(--bdr2)}
+        @media(max-width:420px){.filter-btns{display:none}}
+
+        /* ── TABLE SCROLL — FIX: overflow-x only, not both axes ── */
+        .tbl-scroll{
+          overflow-x:auto;
+          -webkit-overflow-scrolling:touch;
+          border-radius:var(--rs);
+          border:1px solid var(--bdr);
+          /* FIX: max-height + overflow-y so thead sticky works inside the container */
+          max-height:420px;
+          overflow-y:auto;
+        }
+
+        table{
+          width:100%;
+          border-collapse:collapse;
+          font-size:11px;
+          min-width:400px;
+        }
+
+        /* FIX: thead sticky — top:0 relative to .tbl-scroll, not the page */
+        thead{
+          position:sticky;
+          top:0;
+          z-index:2;
+        }
+
+        th{
+          background:var(--bg3);
+          font-size:9px;letter-spacing:.08em;text-transform:uppercase;
+          font-weight:500;color:var(--t3);text-align:right;
+          padding:9px 12px;
+          /* FIX: solid border-bottom so header doesn't bleed into rows on scroll */
+          border-bottom:2px solid var(--bdr2);
+          white-space:nowrap;
+        }
+        th:first-child{text-align:left}
+
+        td{
+          text-align:right;padding:8px 12px;color:var(--t2);
+          border-bottom:1px solid var(--bdr);
+        }
+        td:first-child{text-align:left;color:var(--t1);font-weight:500;white-space:nowrap}
+        tr:last-child td{border-bottom:none}
+        tr:hover td{background:var(--surface2)}
+        tr.row-danger td{background:rgba(240,82,82,.04)}
+        tr.row-danger:hover td{background:rgba(240,82,82,.09)}
+        tr.row-low td{background:rgba(245,166,35,.04)}
+
+        .td-green{color:var(--green);font-weight:500}
+        .td-amber{color:var(--amber);font-weight:500}
+        .td-red{color:var(--red);font-weight:500}
+
+        /* Responsive column hiding */
+        @media(max-width:479px){
+          .col-open,.col-ret{display:none}
+        }
+        @media(min-width:480px) and (max-width:599px){
+          .col-open{display:none}
+        }
+
+        /* ── TAGS ── */
+        .tag{
+          display:inline-flex;align-items:center;gap:3px;
+          font-size:9px;letter-spacing:.06em;text-transform:uppercase;
+          padding:2px 8px;border-radius:20px;font-weight:600;white-space:nowrap;
+        }
+        .tag::before{content:'';width:4px;height:4px;border-radius:50%;background:currentColor;flex-shrink:0}
+        .tag-ok{background:var(--green-bg);color:var(--green);border:1px solid rgba(52,201,123,.2)}
+        .tag-lo{background:var(--amber-bg);color:var(--amber);border:1px solid rgba(245,166,35,.2)}
+        .tag-no{background:var(--red-bg);color:var(--red);border:1px solid rgba(240,82,82,.2)}
+
+        /* ── UTIL ── */
+        .hidden{display:none!important}
+
+        /* ── FOOTER ── */
+        footer{
+          max-width:960px;margin:0 auto;
+          padding:var(--sp-lg) var(--sp-md) clamp(1.5rem,5vw,3rem);
+          font-size:10px;color:var(--t3);letter-spacing:.04em;
+          border-top:1px solid var(--bdr);text-align:center;line-height:1.6;
+        }
+    </style>
+</head>
+<body>
+
+<nav class="topbar" role="navigation" aria-label="Site navigation">
+    <div class="topbar-brand">
+        <span class="brand-dot" aria-hidden="true"></span>
+        SWP Calculator
+    </div>
+    <span class="topbar-badge" aria-label="Inflation Adjusted">Inflation Adjusted</span>
+</nav>
+
+<header class="hero">
+    <p class="eyebrow" aria-label="Systematic Withdrawal Plan">Systematic Withdrawal Plan</p>
+    <h1>How long will your<br/><em>corpus last?</em></h1>
+    <p class="hero-sub">
+        Inflation-adjusted month-by-month simulation — know exactly when your money runs out before it does.
+    </p>
+</header>
+
+<main class="main" id="main-content" role="main">
+
+    <!-- ── INPUT CARD ── -->
+    <section class="card" aria-label="Input parameters">
+        <div class="card-head">
+            <h2 class="card-title">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                    <rect x="2" y="2" width="12" height="12" rx="2"/>
+                    <line x1="5" y1="8" x2="11" y2="8"/>
+                    <line x1="8" y1="5" x2="8" y2="11"/>
+                </svg>
+                Parameters
+            </h2>
+        </div>
+
+        <div class="inputs-grid">
+
+            <div class="inp-group">
+                <label class="inp-label" for="corpus">Lumpsum corpus</label>
+                <div class="inp-wrap">
+                    <span class="adorn adorn-l" aria-hidden="true">&#8377;</span>
+                    <input type="number" id="corpus" value="10000000" step="100000" min="1" max="1000000000"
+                           inputmode="numeric" autocomplete="off" aria-describedby="corpus-help"/>
+                </div>
+                <div class="slider-row">
+                    <input type="range" id="corpus-s" min="1000000" max="100000000" step="500000" value="10000000"
+                           aria-label="Corpus amount slider"/>
+                    <span class="sv" id="corpus-sv" aria-live="polite">1 Cr</span>
+                </div>
+                <span id="corpus-help" class="hidden"></span>
+            </div>
+
+            <div class="inp-group">
+                <label class="inp-label" for="withdrawal">Monthly withdrawal</label>
+                <div class="inp-wrap">
+                    <span class="adorn adorn-l" aria-hidden="true">&#8377;</span>
+                    <input type="number" id="withdrawal" value="50000" step="1000" min="1" max="10000000"
+                           inputmode="numeric" autocomplete="off"/>
+                </div>
+                <div class="slider-row">
+                    <input type="range" id="withdrawal-s" min="5000" max="500000" step="5000" value="50000"
+                           aria-label="Monthly withdrawal slider"/>
+                    <span class="sv" id="withdrawal-sv" aria-live="polite">50K</span>
+                </div>
+            </div>
+
+            <div class="inp-group">
+                <label class="inp-label" for="returns">Expected return p.a.</label>
+                <div class="inp-wrap">
+                    <input type="number" id="returns" value="10" step="0.5" min="0" max="50"
+                           inputmode="decimal" autocomplete="off"/>
+                    <span class="adorn adorn-r" aria-hidden="true">%</span>
+                </div>
+                <div class="slider-row">
+                    <input type="range" id="returns-s" min="1" max="25" step="0.5" value="10"
+                           aria-label="Expected return slider"/>
+                    <span class="sv" id="returns-sv" aria-live="polite">10%</span>
+                </div>
+            </div>
+
+            <div class="inp-group">
+                <label class="inp-label" for="inflation">Inflation rate p.a.</label>
+                <div class="inp-wrap">
+                    <input type="number" id="inflation" value="6" step="0.5" min="0" max="20"
+                           inputmode="decimal" autocomplete="off"/>
+                    <span class="adorn adorn-r" aria-hidden="true">%</span>
+                </div>
+                <div class="slider-row">
+                    <input type="range" id="inflation-s" min="1" max="15" step="0.5" value="6"
+                           aria-label="Inflation rate slider"/>
+                    <span class="sv" id="inflation-sv" aria-live="polite">6%</span>
+                </div>
+            </div>
+
+            <div class="inp-group">
+                <label class="inp-label" for="years">Plan horizon</label>
+                <div class="inp-wrap">
+                    <input type="number" id="years" value="25" step="1" min="1" max="60"
+                           inputmode="numeric" autocomplete="off"/>
+                    <span class="adorn adorn-r" aria-hidden="true">yrs</span>
+                </div>
+                <div class="slider-row">
+                    <input type="range" id="years-s" min="1" max="50" step="1" value="25"
+                           aria-label="Plan horizon slider"/>
+                    <span class="sv" id="years-sv" aria-live="polite">25 yrs</span>
+                </div>
+            </div>
+
+        </div>
+
+        <p class="val-msg" id="val-msg" role="alert" aria-live="assertive"></p>
+
+        <button class="calc-btn" id="calc-btn" type="button" aria-controls="results">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M3 8h10M9 4l4 4-4 4"/>
+            </svg>
+            Calculate SWP Plan
+        </button>
+    </section>
+
+    <!-- ── RESULTS ── -->
+    <div id="results" class="hidden" aria-live="polite" aria-label="Calculation results">
+
+        <!-- Summary -->
+        <section class="card" aria-label="Summary metrics">
+            <div class="card-head">
+                <h2 class="card-title">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                        <circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/>
+                    </svg>
+                    Summary
+                </h2>
+            </div>
+            <div class="metrics-grid">
+                <div class="metric m-blue" id="m-surv">
+                    <div class="m-label">Corpus survives</div>
+                    <div class="m-val" id="mv-surv">—</div>
+                    <div class="m-sub" id="ms-surv"></div>
+                </div>
+                <div class="metric m-blue" id="m-tot">
+                    <div class="m-label">Total withdrawn</div>
+                    <div class="m-val" id="mv-tot">—</div>
+                    <div class="m-sub">cumulative</div>
+                </div>
+                <div class="metric m-blue" id="m-bal">
+                    <div class="m-label">Final balance</div>
+                    <div class="m-val" id="mv-bal">—</div>
+                    <div class="m-sub" id="ms-bal"></div>
+                </div>
+                <div class="metric m-blue">
+                    <div class="m-label">Real return (net)</div>
+                    <div class="m-val" id="mv-real">—</div>
+                    <div class="m-sub">post-inflation (Fisher)</div>
+                </div>
+            </div>
+            <div id="insight" class="hidden insight" role="status"></div>
+        </section>
+
+        <!-- Chart -->
+        <section class="card" aria-label="Corpus trajectory chart">
+            <div class="card-head">
+                <h2 class="card-title">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                        <polyline points="2,12 6,7 9,9 14,4"/>
+                        <line x1="2" y1="14" x2="14" y2="14"/>
+                    </svg>
+                    Corpus trajectory
+                </h2>
+                <div class="chart-tabs" role="group" aria-label="Chart type">
+                    <button class="tab-btn active" id="tab-bar" type="button" aria-pressed="true">Bar</button>
+                    <button class="tab-btn" id="tab-line" type="button" aria-pressed="false">Line</button>
+                </div>
+            </div>
+            <div class="chart-top">
+                <div class="legend" id="legend" aria-hidden="true"></div>
+            </div>
+            <div class="chart-wrap">
+                <canvas id="chart" aria-label="SWP corpus chart" role="img"></canvas>
+            </div>
+        </section>
+
+        <!-- Table -->
+        <section class="card" aria-label="Year by year breakdown">
+            <div class="card-head">
+                <h2 class="card-title">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                        <rect x="2" y="2" width="12" height="12" rx="1.5"/>
+                        <line x1="2" y1="6" x2="14" y2="6"/>
+                        <line x1="7" y1="6" x2="7" y2="14"/>
+                    </svg>
+                    Year-by-year breakdown
+                </h2>
+            </div>
+            <div class="tbl-controls">
+                <div class="search-box">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                        <circle cx="7" cy="7" r="4"/>
+                        <line x1="10.5" y1="10.5" x2="14" y2="14"/>
+                    </svg>
+                    <input type="text" id="tbl-search" placeholder="Search year…"
+                           inputmode="numeric" maxlength="4" aria-label="Search year"/>
+                </div>
+                <div class="filter-btns" role="group" aria-label="Filter by status">
+                    <button class="f-btn active" type="button" data-filter="all">All</button>
+                    <button class="f-btn" type="button" data-filter="ok">Healthy</button>
+                    <button class="f-btn" type="button" data-filter="lo">Low</button>
+                    <button class="f-btn" type="button" data-filter="no">Depleted</button>
+                </div>
+            </div>
+            <div class="tbl-scroll" role="region" aria-label="Yearly data" tabindex="0">
+                <table aria-label="SWP year-by-year data">
+                    <thead>
+                    <tr>
+                        <th scope="col">Year</th>
+                        <th scope="col" class="col-open">Opening</th>
+                        <th scope="col" class="col-wdl">Withdrawal</th>
+                        <th scope="col" class="col-ret">Returns</th>
+                        <th scope="col">Closing</th>
+                        <th scope="col">Status</th>
+                    </tr>
+                    </thead>
+                    <tbody id="tbl-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+    </div>
+</main>
+
+<footer>
+    &#42; Month-by-month end-of-month SWP simulation with Fisher real-return formula.
+    Inflation compounds monthly. Returns are not guaranteed.
+    For financial planning purposes only — not investment advice.
+</footer>
+
+<script>
+    (function () {
+    'use strict';
+
+    const FIELDS = ['corpus','withdrawal','returns','inflation','years'];
+
+    const SL_FMT = {
+      corpus:     v => v >= 1e7 ? (v/1e7).toFixed(1)+'Cr' : (v/1e5).toFixed(0)+'L',
+      withdrawal: v => v >= 1e5 ? (v/1e5).toFixed(1)+'L'  : Math.round(v/1e3)+'K',
+      returns:    v => v + '%',
+      inflation:  v => v + '%',
+      years:      v => v + ' yrs'
+    };
+
+    let state = {
+      chartInst: null,
+      chartType: 'bar',
+      filter: 'all',
+      rows: [],
+      corpus0: 0,
+      resizeTimer: null
+    };
+
+    function el(id) { return document.getElementById(id); }
+    function setText(id, val) { el(id).textContent = val; }
+    function setClass(id, cls) { el(id).className = cls; }
+
+    function syncInput(id) {
+      const val = +el(id + '-s').value;
+      el(id).value = val;
+      setText(id + '-sv', SL_FMT[id](val));
+    }
+
+    function syncSlider(id) {
+      const val = parseFloat(el(id).value);
+      if (!isNaN(val)) {
+        el(id + '-s').value = val;
+        setText(id + '-sv', SL_FMT[id](val));
+      }
+    }
+
+    FIELDS.forEach(id => {
+      el(id + '-s').addEventListener('input', () => syncInput(id));
+      el(id).addEventListener('input', () => syncSlider(id));
+      setText(id + '-sv', SL_FMT[id](+el(id).value));
+    });
+
+    const RS = '\u20b9';
+
+    function fmt(n, short) {
+      const abs = Math.abs(n);
+      const neg = n < 0 ? '-' : '';
+      if (abs >= 1e7)  return neg + RS + (abs/1e7).toFixed(short ? 1 : 2) + (short ? 'Cr' : ' Cr');
+      if (abs >= 1e5)  return neg + RS + (abs/1e5).toFixed(short ? 1 : 2) + (short ? 'L'  : ' L');
+      return neg + RS + Math.round(abs).toLocaleString('en-IN');
+    }
+
+    function validate() {
+      const corpus     = +el('corpus').value;
+      const withdrawal = +el('withdrawal').value;
+      const returns    = +el('returns').value;
+      const inflation  = +el('inflation').value;
+      const years      = +el('years').value;
+      const msgEl      = el('val-msg');
+
+      if (!corpus || corpus <= 0)           { msgEl.textContent = 'Please enter a valid corpus amount.'; return null; }
+      if (!withdrawal || withdrawal <= 0)   { msgEl.textContent = 'Please enter a valid monthly withdrawal.'; return null; }
+      if (returns < 0 || returns > 50)      { msgEl.textContent = 'Expected return must be between 0% and 50%.'; return null; }
+      if (inflation < 0 || inflation > 20)  { msgEl.textContent = 'Inflation must be between 0% and 20%.'; return null; }
+      if (!years || years < 1 || years > 60){ msgEl.textContent = 'Plan horizon must be between 1 and 60 years.'; return null; }
+      if (withdrawal * 12 > corpus)         { msgEl.textContent = 'Warning: Annual withdrawal exceeds entire corpus. Corpus may deplete in Year 1.'; }
+      else                                  { msgEl.textContent = ''; }
+
+      return { corpus, withdrawal, returns, inflation, years };
+    }
+
+    function calculate() {
+      const inputs = validate();
+      if (!inputs) return;
+
+      const { corpus, withdrawal: w0, returns, inflation, years } = inputs;
+      const retMo = returns  / 100 / 12;
+      const infMo = inflation / 100 / 12;
+      const retPa = returns  / 100;
+      const infPa = inflation / 100;
+
+      let balance = corpus;
+      const rows  = [];
+      let depleteYear   = null;
+      let totalWithdrawn = 0;
+
+      for (let y = 1; y <= years; y++) {
+        const opening = balance;
+        let annW = 0, annR = 0;
+
+        for (let m = 1; m <= 12; m++) {
+          const mn = (y - 1) * 12 + m;
+          const w = w0 * Math.pow(1 + infMo, mn - 1);
+          const r = Math.max(balance, 0) * retMo;
+          balance += r - w;
+          annW += w;
+          annR += r;
+        }
+
+        totalWithdrawn += annW;
+        rows.push({ y, opening, withdrawal: annW, returns: annR, closing: balance });
+        if (balance <= 0 && !depleteYear) depleteYear = y;
+      }
+
+      const realRet = ((1 + retPa) / (1 + infPa) - 1) * 100;
+      const finalBal = rows[rows.length - 1].closing;
+
+      state.rows    = rows;
+      state.corpus0 = corpus;
+
+      renderSummary({ corpus, depleteYear, totalWithdrawn, finalBal, realRet, years, inflation });
+      renderChart(state.chartType);
+      renderTable();
+
+      const res = el('results');
+      res.classList.remove('hidden');
+      requestAnimationFrame(() => res.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    }
+
+    function renderSummary({ corpus, depleteYear, totalWithdrawn, finalBal, realRet, years, inflation }) {
+      if (depleteYear) {
+        setText('mv-surv', 'Year ' + depleteYear);
+        setClass('mv-surv', 'm-val t-red');
+        setText('ms-surv', 'Depleted ' + depleteYear + ' of ' + years + ' yrs');
+        setClass('m-surv', 'metric m-red');
+      } else {
+        setText('mv-surv', years + ' yrs ✓');
+        setClass('mv-surv', 'm-val t-green');
+        setText('ms-surv', 'Corpus intact through plan');
+        setClass('m-surv', 'metric m-green');
+      }
+
+      setText('mv-tot', fmt(totalWithdrawn));
+      setClass('m-tot', 'metric m-blue');
+
+      setText('mv-bal', fmt(finalBal));
+      if (finalBal < 0) {
+        setClass('mv-bal', 'm-val t-red'); setClass('m-bal', 'metric m-red');
+        setText('ms-bal', 'Corpus exhausted');
+      } else if (finalBal < corpus * 0.2) {
+        setClass('mv-bal', 'm-val t-amber'); setClass('m-bal', 'metric m-amber');
+        setText('ms-bal', 'Less than 20% remains');
+      } else {
+        setClass('mv-bal', 'm-val t-green'); setClass('m-bal', 'metric m-green');
+        setText('ms-bal', 'Strong residual corpus');
+      }
+
+      const rvEl = el('mv-real');
+      rvEl.textContent = realRet.toFixed(2) + '% p.a.';
+      rvEl.className = 'm-val' + (realRet < 0 ? ' t-red' : realRet < 2 ? ' t-amber' : '');
+
+      const ins = el('insight');
+      ins.classList.remove('hidden', 'ins-green', 'ins-amber', 'ins-red');
+      if (depleteYear) {
+        ins.className = 'insight ins-red';
+        ins.innerHTML = '<span class="ins-icon">&#9888;</span><span>With <strong>' + inflation + '%</strong> inflation, your corpus depletes in <strong>Year ' + depleteYear + '</strong>. Consider reducing monthly withdrawal or targeting higher returns.</span>';
+      } else if (finalBal < corpus * 0.3) {
+        ins.className = 'insight ins-amber';
+        ins.innerHTML = '<span class="ins-icon">&#9651;</span><span>Corpus survives but shrinks significantly. Consider annual reviews to rebalance your withdrawal rate.</span>';
+      } else {
+        ins.className = 'insight ins-green';
+        ins.innerHTML = '<span class="ins-icon">&#10003;</span><span>Well positioned — corpus comfortably sustains withdrawals for all <strong>' + years + ' years</strong> with a healthy residual balance.</span>';
+      }
+    }
+
+    function renderChart(type) {
+      const { rows } = state;
+      const labels      = rows.map(r => 'Y' + r.y);
+      const balances    = rows.map(r => Math.round(r.closing));
+      const withdrawals = rows.map(r => Math.round(r.withdrawal));
+      const isLine      = type === 'line';
+
+      el('legend').innerHTML =
+        '<span class="leg-item"><span class="leg-dot" style="background:#4f8ef7"></span>Positive</span>' +
+        '<span class="leg-item"><span class="leg-dot" style="background:#f05252"></span>Negative</span>' +
+        '<span class="leg-item"><span class="leg-dot" style="background:#f5a623;border-radius:50%"></span>Withdrawal/yr</span>';
+
+      if (state.chartInst) { state.chartInst.destroy(); state.chartInst = null; }
+
+      const bgColors = balances.map(b => b < 0 ? 'rgba(240,82,82,.28)' : 'rgba(79,142,247,.22)');
+      const bdColors = balances.map(b => b < 0 ? '#f05252' : '#4f8ef7');
+      const wide     = window.innerWidth > 480;
+
+      state.chartInst = new Chart(el('chart'), {
+        type: isLine ? 'line' : 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Corpus balance',
+              data: balances,
+              backgroundColor: isLine ? 'rgba(79,142,247,.08)' : bgColors,
+              borderColor:     isLine ? '#4f8ef7' : bdColors,
+              borderWidth: isLine ? 2 : 1.5,
+              borderRadius: isLine ? 0 : 3,
+              fill: isLine,
+              tension: 0.32,
+              pointRadius: isLine ? (rows.length > 30 ? 0 : 2) : 0,
+              yAxisID: 'y'
+            },
+            {
+              label: 'Annual withdrawal',
+              data: withdrawals,
+              type: 'line',
+              borderColor: '#f5a623',
+              backgroundColor: 'transparent',
+              borderWidth: 1.5,
+              borderDash: [4, 3],
+              pointRadius: 0,
+              tension: 0.4,
+              yAxisID: 'y2'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#1e2330',
+              borderColor: '#2a3047', borderWidth: 1,
+              titleColor: '#e8eaf0', bodyColor: '#8b93ab',
+              titleFont: { family: "'JetBrains Mono',monospace", size: 10 },
+              bodyFont:  { family: "'JetBrains Mono',monospace", size: 10 },
+              padding: 10,
+              callbacks: { label: ctx => '  ' + ctx.dataset.label + ': ' + fmt(ctx.raw, true) }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { font: { size: 9, family: "'JetBrains Mono',monospace" }, color: '#555e78', autoSkip: true, maxTicksLimit: 12 },
+              grid:  { color: 'rgba(42,48,71,.4)', lineWidth: .5 },
+              border:{ color: '#2a3047' }
+            },
+            y: {
+              position: 'left',
+              ticks:  { font: { size: 9, family: "'JetBrains Mono',monospace" }, color: '#555e78', callback: v => fmt(v, true) },
+              grid:   { color: 'rgba(42,48,71,.4)', lineWidth: .5 },
+              border: { color: '#2a3047' },
+              title:  { display: wide, text: 'Corpus', font: { size: 9 }, color: '#555e78' }
+            },
+            y2: {
+              position: 'right',
+              ticks:  { font: { size: 9, family: "'JetBrains Mono',monospace" }, color: 'rgba(245,166,35,.65)', callback: v => fmt(v, true) },
+              grid:   { display: false },
+              title:  { display: wide, text: 'Withdrawal', font: { size: 9 }, color: 'rgba(245,166,35,.65)' }
+            }
+          }
+        }
+      });
+    }
+
+    function getStatus(closing) {
+      if (closing < 0)                       return 'no';
+      if (closing < state.corpus0 * 0.1)     return 'lo';
+      return 'ok';
+    }
+
+    const TAG_MAP = {
+      ok: '<span class="tag tag-ok">Healthy</span>',
+      lo: '<span class="tag tag-lo">Low</span>',
+      no: '<span class="tag tag-no">Depleted</span>'
+    };
+    const TD_CLS = { ok: 'td-green', lo: 'td-amber', no: 'td-red' };
+    const ROW_CLS = { ok: '', lo: 'row-low', no: 'row-danger' };
+
+    function renderTable() {
+      state.rows = state.rows.map(r => ({ ...r, status: getStatus(r.closing) }));
+      applyTable();
+    }
+
+    function applyTable() {
+      const q  = (el('tbl-search').value || '').trim().toLowerCase();
+      const ft = state.filter;
+
+      const filtered = state.rows.filter(r => {
+        const mQ = !q || String(r.y).includes(q);
+        const mF = ft === 'all' || r.status === ft;
+        return mQ && mF;
+      });
+
+      const tbody = el('tbl-body');
+      const frag = document.createDocumentFragment();
+
+      if (!filtered.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 6;
+        td.style.cssText = 'text-align:center;padding:2rem;color:var(--t3);font-size:12px';
+        td.textContent = 'No rows match the current filter.';
+        tr.appendChild(td);
+        frag.appendChild(tr);
+      } else {
+        filtered.forEach(row => {
+          const s  = row.status;
+          const tr = document.createElement('tr');
+          if (ROW_CLS[s]) tr.className = ROW_CLS[s];
+
+          const cells = [
+            { text: 'Year ' + row.y, cls: '' },
+            { text: fmt(row.opening, true), cls: 'col-open' },
+            { text: fmt(row.withdrawal, true), cls: 'col-wdl' },
+            { text: fmt(row.returns, true), cls: 'col-ret' },
+            { text: fmt(row.closing, true), cls: TD_CLS[s] },
+          ];
+          cells.forEach(({ text, cls }) => {
+            const td = document.createElement('td');
+            if (cls) td.className = cls;
+            td.textContent = text;
+            tr.appendChild(td);
+          });
+
+          const tdTag = document.createElement('td');
+          tdTag.innerHTML = TAG_MAP[s];
+          tr.appendChild(tdTag);
+
+          frag.appendChild(tr);
+        });
+      }
+
+      tbody.replaceChildren(frag);
+    }
+
+    el('calc-btn').addEventListener('click', calculate);
+
+    el('tab-bar').addEventListener('click', function () {
+      el('tab-bar').classList.add('active');
+      el('tab-line').classList.remove('active');
+      el('tab-bar').setAttribute('aria-pressed', 'true');
+      el('tab-line').setAttribute('aria-pressed', 'false');
+      state.chartType = 'bar';
+      if (state.rows.length) renderChart('bar');
+    });
+    el('tab-line').addEventListener('click', function () {
+      el('tab-line').classList.add('active');
+      el('tab-bar').classList.remove('active');
+      el('tab-line').setAttribute('aria-pressed', 'true');
+      el('tab-bar').setAttribute('aria-pressed', 'false');
+      state.chartType = 'line';
+      if (state.rows.length) renderChart('line');
+    });
+
+    el('tbl-search').addEventListener('input', applyTable);
+
+    document.querySelectorAll('.f-btn').forEach(btn => {
+      btn.addEventListener('click', function () {
+        document.querySelectorAll('.f-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        state.filter = this.dataset.filter;
+        applyTable();
+      });
+    });
+
+    window.addEventListener('resize', () => {
+      clearTimeout(state.resizeTimer);
+      state.resizeTimer = setTimeout(() => {
+        if (state.rows.length && state.chartInst) renderChart(state.chartType);
+      }, 220);
+    });
+
+    FIELDS.forEach(id => {
+      el(id).addEventListener('keydown', e => { if (e.key === 'Enter') calculate(); });
+    });
+
+    })();
+</script>
+</body>
+</html>
