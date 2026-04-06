@@ -5,7 +5,7 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from core.config import settings
 from core.deps import templates
@@ -17,44 +17,41 @@ router = APIRouter()
 
 @router.get("/ai", response_class=HTMLResponse, tags=["AI"])
 async def ai_get(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("ai.html", {
-        "request": request,
-        "answer":  "",
-        "error":   "",
-        "prompt":  "",
-    })
+    return templates.TemplateResponse("ai.html", {"request": request})
 
 
-@router.post("/ai", response_class=HTMLResponse, tags=["AI"])
-async def ai_post(request: Request) -> HTMLResponse:
-    form   = await request.form()
-    prompt = (form.get("prompt") or "").strip()
-    answer = ""
-    error  = ""
+@router.post("/api/chat", tags=["AI"])
+async def api_chat(request: Request) -> JSONResponse:
+    """
+    JSON endpoint consumed by the typewriter UI.
+    Returns: {"answer": "..."} or {"error": "..."}
+    """
+    body   = await request.json()
+    prompt = (body.get("prompt") or "").strip()
 
     if not prompt:
-        error = "Please enter a message."
-    elif len(prompt) > settings.MAX_PROMPT_LEN:
-        error = f"Message too long (max {settings.MAX_PROMPT_LEN} characters)."
-    elif not ai_svc.is_available():
-        error = (
-            "AI service is not configured. "
-            "Set the GROQ_API_KEY environment variable and restart the server. "
-            "Get a free key at console.groq.com"
-        )
-    else:
-        try:
-            answer = await asyncio.to_thread(ai_svc.chat, prompt)
-        except RuntimeError as exc:
-            # RuntimeError from ai_svc.chat contains a safe, user-facing message
-            error = str(exc)
-        except Exception:
-            logger.exception("Unexpected error in AI router")
-            error = "An unexpected error occurred. Please try again."
+        return JSONResponse({"error": "Please enter a message."}, status_code=400)
 
-    return templates.TemplateResponse("ai.html", {
-        "request": request,
-        "answer":  answer,
-        "error":   error,
-        "prompt":  prompt,
-    })
+    if len(prompt) > settings.MAX_PROMPT_LEN:
+        return JSONResponse(
+            {"error": f"Message too long (max {settings.MAX_PROMPT_LEN} characters)."},
+            status_code=400,
+        )
+
+    if not ai_svc.is_available():
+        return JSONResponse(
+            {"error": (
+                "AI service is not configured. "
+                "Set the GROQ_API_KEY environment variable and restart the server."
+            )},
+            status_code=503,
+        )
+
+    try:
+        answer = await asyncio.to_thread(ai_svc.chat, prompt)
+        return JSONResponse({"answer": answer})
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=502)
+    except Exception:
+        logger.exception("Unexpected error in /api/chat")
+        return JSONResponse({"error": "An unexpected error occurred. Please try again."}, status_code=500)
