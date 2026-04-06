@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <meta name="description" content="Stroop Test — tap the ink colour, not the word."/>
+    <title>Stroop Test</title>
+    <style>
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+        :root{
+          --bg:#f5f4f0;--surface:#fff;--border:#e2e0db;
+          --text:#1a1a1a;--sub:#888;--muted:#bbb;
+          --red:#e63946;--blue:#2563eb;--green:#16a34a;
+          --yellow:#d97706;--purple:#7c3aed;--pink:#db2777;
+          --font:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+          --mono:ui-monospace,'Cascadia Code','Menlo',monospace;
+        }
+        html,body{height:100%;background:var(--bg);font-family:var(--font);color:var(--text);-webkit-text-size-adjust:100%;overflow-x:hidden}
+        .shell{min-height:100dvh;display:flex;flex-direction:column;max-width:480px;margin:0 auto;padding:0 20px}
+        header{display:flex;align-items:center;justify-content:space-between;padding:18px 0 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+        .brand{font-size:15px;font-weight:700;letter-spacing:-.3px}
+        .round-badge{font-family:var(--mono);font-size:11px;color:var(--sub);background:var(--border);padding:3px 10px;border-radius:20px}
+        .screen{display:none;flex:1;flex-direction:column;padding:24px 0 32px}
+        .screen.active{display:flex}
+        .home-hero{margin:auto 0;display:flex;flex-direction:column;gap:14px;padding:32px 0}
+        .home-title{font-size:clamp(28px,8vw,38px);font-weight:700;letter-spacing:-.8px;line-height:1.15}
+        .home-desc{font-size:14px;color:var(--sub);line-height:1.75;max-width:340px}
+        .how-it-works{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;margin-top:4px}
+        .how-label{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+        .how-example{display:flex;align-items:center;gap:16px}
+        .ex-word{font-size:22px;font-weight:700;color:var(--blue);letter-spacing:-.3px}
+        .ex-arrow{font-size:14px;color:var(--muted)}
+        .ex-desc{font-size:12px;color:var(--sub);line-height:1.55}
+        .difficulty-row{display:flex;gap:8px;margin-top:4px}
+        .diff-btn{flex:1;padding:10px 8px;border-radius:10px;border:2px solid var(--border);background:var(--surface);font-family:var(--font);font-size:13px;font-weight:500;color:var(--sub);cursor:pointer;transition:border-color .15s,color .15s;text-align:center}
+        .diff-btn.selected{border-color:var(--text);color:var(--text)}
+        .diff-label{font-size:10px;display:block;margin-top:2px;color:var(--muted);font-weight:400}
+        .start-btn{margin-top:8px;width:100%;padding:15px;background:var(--text);color:var(--bg);border:none;border-radius:16px;font-family:var(--font);font-size:15px;font-weight:700;cursor:pointer;letter-spacing:-.2px;transition:opacity .15s,transform .1s}
+        .start-btn:hover{opacity:.88}
+        .start-btn:active{transform:scale(.98)}
+        #screen-countdown{align-items:center;justify-content:center;gap:10px}
+        .countdown-num{font-size:clamp(72px,22vw,110px);font-weight:700;letter-spacing:-4px;line-height:1;animation:popIn .4s cubic-bezier(.34,1.56,.64,1) both}
+        .countdown-label{font-size:13px;color:var(--sub);font-weight:500}
+        @keyframes popIn{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+        #screen-game{gap:0}
+        .game-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+        .progress-bar-wrap{flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+        .progress-bar-fill{height:100%;background:var(--text);border-radius:3px;transition:width .1s linear}
+        .timer-display{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--sub);min-width:36px;text-align:right}
+        .timer-display.urgent{color:var(--red)}
+        .score-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px}
+        .score-item{text-align:center}
+        .score-val{font-family:var(--mono);font-size:22px;font-weight:500;line-height:1}
+        .score-lbl{font-size:10px;color:var(--muted);margin-top:3px;letter-spacing:.04em;text-transform:uppercase}
+        .word-stage{flex:1;display:flex;align-items:center;justify-content:center;padding:20px 0}
+        .word-display{font-size:clamp(38px,12vw,58px);font-weight:700;letter-spacing:-1px;line-height:1;text-align:center;user-select:none}
+        .word-display.flash-right{animation:flashRight .25s ease both}
+        .word-display.flash-wrong{animation:flashWrong .25s ease both}
+        @keyframes flashRight{0%{transform:scale(1)}50%{transform:scale(1.12);opacity:.7}100%{transform:scale(1);opacity:1}}
+        @keyframes flashWrong{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+        .instruction{font-size:12px;color:var(--sub);text-align:center;margin-bottom:14px}
+        .colour-btns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px}
+        .colour-btn{padding:18px 8px;border-radius:16px;border:none;font-family:var(--font);font-size:13px;font-weight:700;color:#fff;cursor:pointer;transition:transform .1s,opacity .15s;-webkit-tap-highlight-color:transparent}
+        .colour-btn:active{transform:scale(.94);opacity:.85}
+        #screen-result{align-items:stretch;gap:14px}
+        .result-header{text-align:center;padding:20px 0 4px}
+        .result-emoji{font-size:42px;line-height:1;margin-bottom:8px}
+        .result-title{font-size:24px;font-weight:700;letter-spacing:-.5px}
+        .result-sub{font-size:13px;color:var(--sub);margin-top:4px}
+        .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+        .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:14px 16px}
+        .stat-card.wide{grid-column:span 2}
+        .stat-val{font-family:var(--mono);font-size:26px;font-weight:500;line-height:1}
+        .stat-lbl{font-size:11px;color:var(--sub);margin-top:5px}
+        .acc-bar-wrap{height:6px;background:var(--border);border-radius:3px;margin-top:10px;overflow:hidden}
+        .acc-bar-fill{height:100%;border-radius:3px;background:var(--green);transition:width .6s cubic-bezier(.34,1.2,.64,1)}
+        .rating-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;margin-top:6px}
+        .rS{background:#fef3c7;color:#92400e}
+        .rA{background:#dcfce7;color:#166534}
+        .rB{background:#dbeafe;color:#1e40af}
+        .rC{background:#f3e8ff;color:#6b21a8}
+        .rD{background:#fee2e2;color:#991b1b}
+        .action-btns{display:flex;flex-direction:column;gap:10px;margin-top:auto;padding-top:8px}
+        .btn-primary{width:100%;padding:15px;background:var(--text);color:var(--bg);border:none;border-radius:16px;font-family:var(--font);font-size:15px;font-weight:700;cursor:pointer;transition:opacity .15s,transform .1s}
+        .btn-primary:hover{opacity:.88}
+        .btn-primary:active{transform:scale(.98)}
+        .btn-secondary{width:100%;padding:14px;background:transparent;color:var(--sub);border:1px solid var(--border);border-radius:16px;font-family:var(--font);font-size:14px;font-weight:500;cursor:pointer;transition:border-color .15s,color .15s}
+        .btn-secondary:hover{border-color:var(--text);color:var(--text)}
+        .feedback{position:fixed;top:70px;left:50%;transform:translateX(-50%) translateY(-10px);padding:7px 18px;border-radius:20px;font-size:13px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;white-space:nowrap;z-index:200}
+        .feedback.show{opacity:1;transform:translateX(-50%) translateY(0)}
+        .feedback.correct{background:#dcfce7;color:#166534}
+        .feedback.wrong{background:#fee2e2;color:#991b1b}
+    </style>
+</head>
+<body>
+<div class="shell">
+    <header>
+        <span class="brand">Stroop Test</span>
+        <span class="round-badge" id="round-badge">Ready</span>
+    </header>
+
+    <section class="screen active" id="screen-home">
+        <div class="home-hero">
+            <h1 class="home-title">Can your brain<br/>handle the <span style="color:var(--red)">colour</span><br/>confusion?</h1>
+            <p class="home-desc">Tap the <strong>ink colour</strong> of the word — not what the word says. Sounds easy. It isn't.</p>
+            <div class="how-it-works">
+                <span class="how-label">How it works</span>
+                <div class="how-example">
+                    <span class="ex-word">RED</span>
+                    <span class="ex-arrow">→</span>
+                    <span class="ex-desc">Word says <strong>RED</strong> but ink is <strong style="color:var(--blue)">Blue</strong> — tap <strong>Blue</strong>!</span>
+                </div>
+            </div>
+            <div>
+                <div class="how-label" style="margin-bottom:8px">Difficulty</div>
+                <div class="difficulty-row">
+                    <button class="diff-btn" data-diff="easy" onclick="selectDiff(this)">Easy<span class="diff-label">15 rounds · 4s</span></button>
+                    <button class="diff-btn selected" data-diff="medium" onclick="selectDiff(this)">Medium<span class="diff-label">20 rounds · 3s</span></button>
+                    <button class="diff-btn" data-diff="hard" onclick="selectDiff(this)">Hard<span class="diff-label">25 rounds · 2s</span></button>
+                </div>
+            </div>
+            <button class="start-btn" onclick="startCountdown()">Start Game</button>
+        </div>
+    </section>
+
+    <section class="screen" id="screen-countdown">
+        <div class="countdown-num" id="cdn">3</div>
+        <div class="countdown-label">Get ready…</div>
+    </section>
+
+    <section class="screen" id="screen-game">
+        <div class="game-top">
+            <div class="progress-bar-wrap"><div class="progress-bar-fill" id="pbar" style="width:100%"></div></div>
+            <div class="timer-display" id="tdisp">3.0</div>
+        </div>
+        <div class="score-row">
+            <div class="score-item"><div class="score-val" id="sc-ok">0</div><div class="score-lbl">Correct</div></div>
+            <div class="score-item"><div class="score-val" id="sc-rd">1/20</div><div class="score-lbl">Round</div></div>
+            <div class="score-item"><div class="score-val" id="sc-st">0</div><div class="score-lbl">Streak 🔥</div></div>
+        </div>
+        <div class="word-stage"><div class="word-display" id="wdisp">RED</div></div>
+        <p class="instruction">Tap the <strong>ink colour</strong> of the word above</p>
+        <div class="colour-btns" id="cbtns"></div>
+    </section>
+
+    <section class="screen" id="screen-result">
+        <div class="result-header">
+            <div class="result-emoji" id="r-emoji">🧠</div>
+            <div class="result-title" id="r-title">Great job!</div>
+            <div class="result-sub" id="r-sub">Here's how you did</div>
+        </div>
+        <div class="stats-grid">
+            <div class="stat-card"><div class="stat-val" id="r-ok">—</div><div class="stat-lbl">Correct answers</div></div>
+            <div class="stat-card"><div class="stat-val" id="r-wr">—</div><div class="stat-lbl">Wrong answers</div></div>
+            <div class="stat-card"><div class="stat-val" id="r-st">—</div><div class="stat-lbl">Best streak 🔥</div></div>
+            <div class="stat-card"><div class="stat-val" id="r-av">—</div><div class="stat-lbl">Avg response</div></div>
+            <div class="stat-card wide">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div><div class="stat-val" id="r-ac">—</div><div class="stat-lbl">Accuracy</div></div>
+                    <div id="r-rt"></div>
+                </div>
+                <div class="acc-bar-wrap"><div class="acc-bar-fill" id="r-bar" style="width:0%"></div></div>
+            </div>
+        </div>
+        <div class="action-btns">
+            <button class="btn-primary" onclick="startCountdown()">Play Again</button>
+            <button class="btn-secondary" onclick="goHome()">Change Difficulty</button>
+        </div>
+    </section>
+</div>
+
+<div class="feedback" id="fb"></div>
+
+<script>
+    (function(){
+      'use strict';
+
+      /* ── CONSTANTS (never mutated) ── */
+      const COLOURS=[
+        {name:'Red',    css:'#e63946'},
+        {name:'Blue',   css:'#2563eb'},
+        {name:'Green',  css:'#16a34a'},
+        {name:'Yellow', css:'#d97706'},
+        {name:'Purple', css:'#7c3aed'},
+        {name:'Pink',   css:'#db2777'},
+      ];
+      const DIFF={
+        easy:  {rounds:15,time:4000,colours:4},
+        medium:{rounds:20,time:3000,colours:5},
+        hard:  {rounds:25,time:2000,colours:6},
+      };
+      const GRADES=[
+        {min:95,g:'S',cls:'rS',e:'🏆',t:'Legendary!',  s:'Your brain is unstoppable.'},
+        {min:80,g:'A',cls:'rA',e:'🧠',t:'Excellent!',   s:'You resisted the stroop effect really well.'},
+        {min:65,g:'B',cls:'rB',e:'👏',t:'Good job!',    s:'Your brain handles conflict pretty well.'},
+        {min:50,g:'C',cls:'rC',e:'🤔',t:'Not bad!',     s:'Keep practising to improve your focus.'},
+        {min:0, g:'D',cls:'rD',e:'😅',t:'Keep trying!', s:'The stroop effect got you this time!'},
+      ];
+
+      /* ── CACHED DOM REFS ── */
+      const $ = id => document.getElementById(id);
+      const screens   = document.querySelectorAll('.screen');
+      const diffBtns  = document.querySelectorAll('.diff-btn');
+      const cdnEl     = $('cdn');
+      const pbEl      = $('pbar');
+      const tdEl      = $('tdisp');
+      const wdEl      = $('wdisp');
+      const scOk      = $('sc-ok');
+      const scRd      = $('sc-rd');
+      const scSt      = $('sc-st');
+      const fbEl      = $('fb');
+      const badgeEl   = $('round-badge');
+
+      /* ── STATE ── */
+      let s={diff:'medium',round:0,correct:0,wrong:0,streak:0,best:0,times:[],ink:null,t0:0,timer:null,tint:null,done:false};
+
+      /* ── HELPERS ── */
+      function rand(a){return a[Math.random()*a.length|0]}
+
+      function showScreen(id){
+        screens.forEach(el=>el.classList.remove('active'));
+        $(id).classList.add('active');
+      }
+
+      /* ── DIFFICULTY ── */
+      function selectDiff(btn){
+        diffBtns.forEach(b=>b.classList.remove('selected'));
+        btn.classList.add('selected');
+        s.diff=btn.dataset.diff;
+      }
+
+      /* ── COUNTDOWN ── */
+      function startCountdown(){
+        showScreen('screen-countdown');
+        let n=3;
+        cdnEl.textContent=n;
+        cdnEl.style.animation='none';
+        void cdnEl.offsetWidth;
+        cdnEl.style.animation='';
+        const iv=setInterval(()=>{
+          if(--n<=0){clearInterval(iv);startGame();return}
+          cdnEl.style.animation='none';
+          void cdnEl.offsetWidth;
+          cdnEl.style.animation='popIn .4s cubic-bezier(.34,1.56,.64,1) both';
+          cdnEl.textContent=n;
+        },900);
+      }
+
+      /* ── START GAME ── */
+      function startGame(){
+        const cfg=DIFF[s.diff];
+        s={...s,round:0,correct:0,wrong:0,streak:0,best:0,times:[],done:false};
+        badgeEl.textContent=s.diff[0].toUpperCase()+s.diff.slice(1);
+        buildButtons(cfg);
+        showScreen('screen-game');
+        nextRound();
+      }
+
+      /* ── BUILD BUTTONS (once per game) ── */
+      function buildButtons(cfg){
+        const wrap=$('cbtns');
+        wrap.innerHTML='';
+        const pool=COLOURS.slice(0,cfg.colours);
+        const frag=document.createDocumentFragment();
+        pool.forEach(c=>{
+          const b=document.createElement('button');
+          b.className='colour-btn';
+          b.style.background=c.css;
+          b.textContent=c.name;
+          b.setAttribute('aria-label',c.name);
+          b.addEventListener('click',()=>answer(c.name));
+          frag.appendChild(b);
+        });
+        wrap.appendChild(frag);
+      }
+
+      /* ── NEXT ROUND ── */
+      function nextRound(){
+        const cfg=DIFF[s.diff];
+        const pool=COLOURS.slice(0,cfg.colours);
+        s.round++;
+        s.done=false;
+
+        const ink=rand(pool);
+        let word=ink;
+        if(Math.random()>.3&&pool.length>1)
+          word=rand(pool.filter(c=>c.name!==ink.name));
+
+        s.ink=ink.name;
+        s.t0=performance.now();
+
+        wdEl.textContent=word.name.toUpperCase();
+        wdEl.style.color=ink.css;
+        wdEl.className='word-display';
+
+        scOk.textContent=s.correct;
+        scRd.textContent=s.round+'/'+cfg.rounds;
+        scSt.textContent=s.streak;
+
+        startTimer(cfg.time,cfg);
+      }
+
+      /* ── TIMER (100ms tick — imperceptible vs 50ms, half the calls) ── */
+      function startTimer(ms,cfg){
+        clearTimeout(s.timer);
+        clearInterval(s.tint);
+        const end=performance.now()+ms;
+        s.tint=setInterval(()=>{
+          const left=Math.max(0,end-performance.now());
+          tdEl.textContent=(left/1000).toFixed(1);
+          pbEl.style.width=(left/ms*100)+'%';
+          tdEl.classList.toggle('urgent',left<1000);
+        },100);
+        s.timer=setTimeout(()=>{
+          clearInterval(s.tint);
+          if(!s.done)answer(null);
+        },ms);
+      }
+
+      /* ── ANSWER ── */
+      function answer(chosen){
+        if(s.done)return;
+        s.done=true;
+        clearTimeout(s.timer);
+        clearInterval(s.tint);
+
+        const ok=chosen===s.ink;
+        if(ok){
+          s.correct++;
+          s.streak++;
+          if(s.streak>s.best)s.best=s.streak;
+          s.times.push(performance.now()-s.t0);
+          flash('flash-right');
+          toast('+1 Correct!','correct');
+        } else {
+          s.wrong++;
+          s.streak=0;
+          flash('flash-wrong');
+          toast(chosen?'✗ It was '+s.ink:'⏱ Too slow!','wrong');
+        }
+        setTimeout(s.round>=DIFF[s.diff].rounds?showResult:nextRound,500);
+      }
+
+      /* ── FLASH ── */
+      function flash(cls){
+        wdEl.classList.remove('flash-right','flash-wrong');
+        void wdEl.offsetWidth;
+        wdEl.classList.add(cls);
+      }
+
+      /* ── TOAST ── */
+      let fbT;
+      function toast(msg,type){
+        fbEl.textContent=msg;
+        fbEl.className='feedback '+type+' show';
+        clearTimeout(fbT);
+        fbT=setTimeout(()=>fbEl.classList.remove('show'),700);
+      }
+
+      /* ── RESULT ── */
+      function showResult(){
+        showScreen('screen-result');
+        const total=DIFF[s.diff].rounds;
+        const acc=Math.round(s.correct/total*100);
+        const avg=s.times.length?Math.round(s.times.reduce((a,b)=>a+b,0)/s.times.length):0;
+        $('r-ok').textContent=s.correct;
+        $('r-wr').textContent=s.wrong;
+        $('r-st').textContent=s.best;
+        $('r-av').textContent=avg?(avg/1000).toFixed(2)+'s':'—';
+        $('r-ac').textContent=acc+'%';
+        requestAnimationFrame(()=>{ $('r-bar').style.width=acc+'%'; });
+        const g=GRADES.find(x=>acc>=x.min);
+        $('r-emoji').textContent=g.e;
+        $('r-title').textContent=g.t;
+        $('r-sub').textContent=g.s;
+        $('r-rt').innerHTML='<div class="rating-badge '+g.cls+'">Grade '+g.g+'</div>';
+        badgeEl.textContent='Done';
+      }
+
+      /* ── HOME ── */
+      function goHome(){
+        badgeEl.textContent='Ready';
+        showScreen('screen-home');
+      }
+
+      /* ── EXPOSE to inline onclick ── */
+      window.selectDiff=selectDiff;
+      window.startCountdown=startCountdown;
+      window.goHome=goHome;
+    })();
+</script>
+</body>
+</html>
