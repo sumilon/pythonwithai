@@ -4,6 +4,7 @@
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <title>SumilonGPT</title>
+    <meta name="description" content="SumilonGPT — AI chat powered by Groq and Llama 3.1"/>
     <link rel="preconnect" href="https://fonts.googleapis.com"/>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600&display=swap" rel="stylesheet"/>
     <style>
@@ -199,7 +200,6 @@
                     <textarea
                             id="ta" name="prompt" rows="1" maxlength="2000"
                             placeholder="Message SumilonGPT…" required
-                            oninput="onIn()" onkeydown="onKey(event)"
                     ></textarea>
                     <button class="send" type="submit" id="snd" disabled aria-label="Send">
                         <svg viewBox="0 0 16 16">
@@ -218,41 +218,60 @@
 
 </div>
 <script>
-    var ta  = document.getElementById('ta');
-    var snd = document.getElementById('snd');
-    var ct  = document.getElementById('ct');
+    (function () {
+        'use strict';
 
-    function onIn() {
-        ta.style.height = 'auto';
-        ta.style.height = Math.min(ta.scrollHeight, 180) + 'px';
-        var n = ta.value.length;
-        snd.disabled = !ta.value.trim();
-        ct.textContent = n > 1600 ? n + '/2000' : '';
-        ct.className = 'ct' + (n > 1800 ? ' warn' : '');
-    }
+        const ta  = document.getElementById('ta');
+        const snd = document.getElementById('snd');
+        const ct  = document.getElementById('ct');
+        const frm = document.getElementById('frm');
 
-    function onKey(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            if (!snd.disabled) document.getElementById('frm').submit();
+        /* ── Auto-resize textarea & character counter ── */
+        function onInput() {
+            ta.style.height = 'auto';
+            ta.style.height = Math.min(ta.scrollHeight, 180) + 'px';
+            const n = ta.value.length;
+            snd.disabled = !ta.value.trim();
+            ct.textContent = n > 1600 ? n + '/2000' : '';
+            ct.className = 'ct' + (n > 1800 ? ' warn' : '');
         }
-    }
 
-    function fill(t) {
-        ta.value = t; onIn(); ta.focus();
-        ta.setSelectionRange(t.length, t.length);
-    }
+        /* ── Enter to submit, Shift+Enter for newline ── */
+        function onKeyDown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!snd.disabled) frm.submit();
+            }
+        }
 
-    document.getElementById('frm').addEventListener('submit', function () {
-        snd.disabled = true;
-        snd.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M12 3a9 9 0 019 9" style="transform-origin:12px 12px;animation:sp .7s linear infinite"/></svg>';
-        var s = document.createElement('style');
-        s.textContent = '@keyframes sp{to{transform:rotate(360deg)}}';
-        document.head.appendChild(s);
-    });
+        /* ── Fill textarea from suggestion chip ── */
+        function fill(t) {
+            ta.value = t;
+            onInput();
+            ta.focus();
+            ta.setSelectionRange(t.length, t.length);
+        }
 
-    document.getElementById('chat').scrollTop = 99999;
-    ta.focus();
+        /* ── Inject spinner CSS once, show spinner on submit ── */
+        const spinStyle = document.createElement('style');
+        spinStyle.textContent = '@keyframes sp{to{transform:rotate(360deg)}}';
+        document.head.appendChild(spinStyle);
+
+        frm.addEventListener('submit', function () {
+            snd.disabled = true;
+            snd.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M12 3a9 9 0 019 9" style="transform-origin:12px 12px;animation:sp .7s linear infinite"/></svg>';
+        });
+
+        ta.addEventListener('input',   onInput);
+        ta.addEventListener('keydown', onKeyDown);
+
+        /* ── Expose fill() for chip onclick attributes ── */
+        window.fill = fill;
+
+        /* ── Scroll chat to bottom & focus on load ── */
+        document.getElementById('chat').scrollTop = 99999;
+        ta.focus();
+    }());
 </script>
 </body>
 </html>

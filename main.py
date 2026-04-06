@@ -10,9 +10,9 @@ Deploy (Cloud Run):
       --memory 512Mi --min-instances 0 --max-instances 3 \
       --set-env-vars GROQ_API_KEY=your_key_here
 
-Environment variables:
+Environment variables (see .env.example for full list):
     GROQ_API_KEY      required for /ai  (get free key at console.groq.com)
-    ALLOWED_ORIGINS   comma-separated CORS origins (default "*" — lock down in prod)
+    ALLOWED_ORIGINS   comma-separated CORS origins — MUST lock down in prod
     GROQ_MODEL        override LLM model (default: llama-3.1-8b-instant)
     GROQ_MAX_TOKENS   override max tokens (default: 512)
     QUOTE_CACHE_TTL   quote cache TTL seconds (default: 300)
@@ -21,19 +21,20 @@ Environment variables:
     HISTORY_CACHE_MAX max entries in history cache (default: 100)
 """
 import logging
-import os
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-# Ensure project root is importable regardless of launch directory
+# Ensure project root is on sys.path regardless of the launch directory.
+# This must run before any local imports.
 _ROOT = Path(__file__).resolve().parent
-import sys
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from core.config import settings
 from core.deps import templates
@@ -49,24 +50,45 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# ── Security-headers middleware ───────────────────────────────────────────────
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Attach a minimal set of hardening headers to every HTTP response."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"]    = "nosniff"
+        response.headers["X-Frame-Options"]           = "DENY"
+        response.headers["X-XSS-Protection"]          = "0"  # disables legacy buggy filter; modern browsers ignore it
+        response.headers["Referrer-Policy"]           = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"]        = "geolocation=(), microphone=(), camera=()"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+
 # ── Lifespan: startup + graceful shutdown ─────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Cloud Run sends SIGTERM before killing the container.
-    FastAPI's lifespan context handles graceful shutdown automatically —
-    in-flight requests finish before the process exits.
+    FastAPI's lifespan handles graceful shutdown — in-flight requests finish
+    before the process exits.
     """
+    if settings.ALLOWED_ORIGINS == ["*"]:
+        logger.warning(
+            "CORS is open to ALL origins (ALLOWED_ORIGINS=*). "
+            "Set ALLOWED_ORIGINS to your domain before going to production."
+        )
     logger.info(
         "Starting %s v%s | curl_cffi=%s | groq=%s",
-        settings.APP_TITLE, settings.APP_VERSION, USE_CURL, groq_ok()
+        settings.APP_TITLE, settings.APP_VERSION, USE_CURL, groq_ok(),
     )
     yield
     logger.info("Shutting down — draining in-flight requests.")
 
 
-# ── App ───────────────────────────────────────────────────────────────────────
+# ── App factory ───────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title=settings.APP_TITLE,
@@ -77,9 +99,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Middleware is applied in reverse registration order (last added = outermost).
+# Order here: SecurityHeaders → CORS → router handlers.
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,   # locked down via env var in prod
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
@@ -99,18 +124,19 @@ async def portfolio(request: Request) -> HTMLResponse:
 
 @app.get("/health", tags=["System"])
 async def health() -> dict:
+    """Service health check — used by Cloud Run readiness probe."""
     return {
-        "status":     "ok",
-        "version":    settings.APP_VERSION,
-        "curl_cffi":  USE_CURL,
-        "groq":       groq_ok(),
+        "status":    "ok",
+        "version":   settings.APP_VERSION,
+        "curl_cffi": USE_CURL,
+        "groq":      groq_ok(),
     }
 
 
 # ── Global exception handler — never leak tracebacks to the client ────────────
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 

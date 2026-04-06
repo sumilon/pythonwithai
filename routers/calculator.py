@@ -12,12 +12,21 @@ from services.calculator import dispatch, indian_format
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-_BLANK = {"result": None, "calc_type": None, "error": None, "indian_format": indian_format}
+
+def _ctx(**kwargs) -> dict:
+    """Build a template context dict with safe defaults."""
+    return {
+        "result":        None,
+        "calc_type":     None,
+        "error":         None,
+        "indian_format": indian_format,
+        **kwargs,
+    }
 
 
 @router.get("/calculator", response_class=HTMLResponse, tags=["Calculator"])
 async def calculator_get(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("calculator.html", {"request": request, **_BLANK})
+    return templates.TemplateResponse("calculator.html", {"request": request, **_ctx()})
 
 
 @router.post("/calculator", response_class=HTMLResponse, tags=["Calculator"])
@@ -25,6 +34,7 @@ async def calculator_post(request: Request) -> HTMLResponse:
     form      = dict(await request.form())
     calc_type = (form.get("type") or "").strip()
     result = error = None
+
     try:
         result = dispatch(calc_type, form)
     except ValueError as exc:
@@ -34,12 +44,10 @@ async def calculator_post(request: Request) -> HTMLResponse:
     except ZeroDivisionError:
         error = "Division by zero — check your inputs."
     except Exception:
-        # Log the full traceback so it appears in Cloud Logging,
-        # but return a generic message to the user.
         logger.exception("Unexpected calculator error: calc_type=%r form=%r", calc_type, form)
         error = "Unexpected error. Please try again."
 
     return templates.TemplateResponse("calculator.html", {
-        "request": request, "result": result,
-        "calc_type": calc_type, "error": error, "indian_format": indian_format,
+        "request": request,
+        **_ctx(result=result, calc_type=calc_type, error=error),
     })

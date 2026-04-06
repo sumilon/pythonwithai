@@ -1,6 +1,6 @@
 """
 routers/pages.py
-Simple template-only pages — add new pages here without touching main.py.
+Simple template-only pages — add new static pages here without touching main.py.
 """
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
@@ -22,7 +22,9 @@ for _path, _tpl in _PAGES.items():
     def _factory(tpl: str):
         async def _view(request: Request) -> HTMLResponse:
             return templates.TemplateResponse(tpl, {"request": request})
-        _view.__name__ = tpl.replace(".html", "")
+        name = tpl.replace(".html", "")
+        _view.__name__     = name
+        _view.__qualname__ = name
         return _view
 
     router.add_api_route(

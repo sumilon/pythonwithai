@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="StockLens Pro — real-time stock quotes, charts and fundamentals for NSE, BSE and US markets." />
     <title>StockLens Pro</title>
 
     <!-- Fonts -->
@@ -733,7 +734,7 @@
 
 <!-- ════════════════════════ FOOTER ════════════════════════ -->
 <footer>
-    <span>© 2025 StockLens Pro &nbsp;·&nbsp; Powered by Yahoo Finance &nbsp;·&nbsp; Data delayed 15–20 min</span>
+    <span>© 2026 StockLens Pro &nbsp;·&nbsp; Powered by Yahoo Finance &nbsp;·&nbsp; Data delayed 15–20 min</span>
     <span class="mono">Not financial advice</span>
 </footer>
 
@@ -1304,12 +1305,11 @@
 
       activeSym = raw;
       lastHistData = null;
+      sessionStorage.setItem('slp_sym', raw);   // persist for page refresh
       showOverlay();
 
       try {
-        const [quoteRes] = await Promise.all([
-          fetch(`/api/quote/${raw}`),
-        ]);
+        const quoteRes  = await fetch(`/api/quote/${raw}`);
         const quoteData = await quoteRes.json();
 
         if (!quoteRes.ok) {
@@ -1345,14 +1345,6 @@
         analyse();
       }
     });
-
-    /* ── Save symbol on analyse ── */
-    const origAnalyse = analyse;
-    // wrap to persist
-    $('analyse-btn').addEventListener('click', () => {
-      const v = $('sym-input').value.trim().toUpperCase();
-      if (v) sessionStorage.setItem('slp_sym', v);
-    }, true);
 </script>
 </body>
 </html>

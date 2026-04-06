@@ -35,7 +35,6 @@ async def ai_post(request: Request) -> HTMLResponse:
     if not prompt:
         error = "Please enter a message."
     elif len(prompt) > settings.MAX_PROMPT_LEN:
-        # Use centralised setting — no more duplicated magic number
         error = f"Message too long (max {settings.MAX_PROMPT_LEN} characters)."
     elif not ai_svc.is_available():
         error = (
@@ -45,12 +44,13 @@ async def ai_post(request: Request) -> HTMLResponse:
         )
     else:
         try:
-            # asyncio.to_thread is the modern, non-deprecated replacement for
-            # get_event_loop().run_in_executor(None, fn, arg)
             answer = await asyncio.to_thread(ai_svc.chat, prompt)
-        except Exception as exc:
-            logger.exception("Groq chat error")
+        except RuntimeError as exc:
+            # RuntimeError from ai_svc.chat contains a safe, user-facing message
             error = str(exc)
+        except Exception:
+            logger.exception("Unexpected error in AI router")
+            error = "An unexpected error occurred. Please try again."
 
     return templates.TemplateResponse("ai.html", {
         "request": request,

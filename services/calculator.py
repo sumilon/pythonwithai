@@ -1,8 +1,7 @@
 """
 services/calculator.py
-Financial calculation logic — zero framework dependencies, fully unit-testable.
+Pure financial calculation logic — no framework dependencies.
 """
-import math
 from typing import Any
 
 
@@ -26,14 +25,39 @@ def indian_format(num: float | None) -> str:
     return ("-" if negative else "") + integer + "." + decimal
 
 
+# Maximum reasonable principal / amount to prevent float overflow and abuse
+_MAX_AMOUNT: float = 1_000_000_000_000   # ₹1 trillion
+_MAX_RATE:   float = 100.0               # 100 % per annum
+_MAX_YEARS:  int   = 50                  # 50 years
+
+
 def _pos(*args: Any) -> None:
     for v in args:
         if v is None or v <= 0:
             raise ValueError(f"Value must be greater than zero (got {v!r})")
 
 
+def _validate_amount(val: float, label: str = "Amount") -> None:
+    """Reject unreasonably large amounts that could cause float overflow."""
+    if val > _MAX_AMOUNT:
+        raise ValueError(f"{label} exceeds maximum allowed value of ₹{_MAX_AMOUNT:,.0f}.")
+
+
+def _validate_rate(val: float, label: str = "Rate") -> None:
+    if val > _MAX_RATE:
+        raise ValueError(f"{label} exceeds maximum allowed value of {_MAX_RATE}%.")
+
+
+def _validate_years(val: int, label: str = "Years") -> None:
+    if val > _MAX_YEARS:
+        raise ValueError(f"{label} exceeds maximum allowed value of {_MAX_YEARS} years.")
+
+
 def calc_emi(loan: float, rate: float, years: int) -> dict:
     _pos(loan, rate, years)
+    _validate_amount(loan, "Loan amount")
+    _validate_rate(rate, "Interest rate")
+    _validate_years(years)
     r     = rate / 100 / 12
     n     = years * 12
     emi   = loan * r * (1 + r) ** n / ((1 + r) ** n - 1)
@@ -44,6 +68,9 @@ def calc_emi(loan: float, rate: float, years: int) -> dict:
 
 def calc_sip(monthly: float, rate: float, years: int) -> dict:
     _pos(monthly, rate, years)
+    _validate_amount(monthly, "Monthly investment")
+    _validate_rate(rate, "Return rate")
+    _validate_years(years)
     r      = rate / 100 / 12
     n      = years * 12
     future = monthly * ((1 + r) ** n - 1) / r * (1 + r)
@@ -54,6 +81,9 @@ def calc_sip(monthly: float, rate: float, years: int) -> dict:
 
 def calc_lumpsum(amount: float, rate: float, years: int) -> dict:
     _pos(amount, rate, years)
+    _validate_amount(amount)
+    _validate_rate(rate, "Return rate")
+    _validate_years(years)
     total = amount * (1 + rate / 100) ** years
     return {"invested": round(amount, 2),
             "returns": round(total - amount, 2),
@@ -62,6 +92,9 @@ def calc_lumpsum(amount: float, rate: float, years: int) -> dict:
 
 def calc_fd(principal: float, rate: float, years: int) -> dict:
     _pos(principal, rate, years)
+    _validate_amount(principal, "Principal")
+    _validate_rate(rate, "Interest rate")
+    _validate_years(years)
     total = principal * (1 + rate / 100 / 4) ** (4 * years)
     return {"invested": round(principal, 2),
             "returns": round(total - principal, 2),
@@ -78,10 +111,11 @@ def calc_rd(deposit: float, rate: float, years: int) -> dict:
     where r = quarterly_rate, n = number of quarters.
     """
     _pos(deposit, rate, years)
+    _validate_amount(deposit, "Monthly deposit")
+    _validate_rate(rate, "Interest rate")
+    _validate_years(years)
     qr       = (rate / 100) / 4          # quarterly interest rate
     quarters = years * 4
-    # Maturity = sum of each monthly deposit compounded for its remaining term
-    # Using geometric series closed form:
     maturity = deposit * ((1 + qr) ** quarters - 1) / (1 - (1 + qr) ** (-1 / 3))
     invested = deposit * years * 12
     return {"invested": round(invested, 2),
@@ -92,8 +126,14 @@ def calc_rd(deposit: float, rate: float, years: int) -> dict:
 def calc_swp(principal: float, withdraw: float,
              rate: float, inflation: float, years: int) -> dict:
     _pos(principal, withdraw, rate, years)
+    _validate_amount(principal, "Principal")
+    _validate_amount(withdraw, "Monthly withdrawal")
+    _validate_rate(rate, "Return rate")
+    _validate_years(years)
     if inflation < 0:
         raise ValueError("Inflation cannot be negative")
+    if inflation > _MAX_RATE:
+        raise ValueError(f"Inflation exceeds maximum allowed value of {_MAX_RATE}%.")
     mr  = rate / 100 / 12
     mir = inflation / 100 / 12
     bal, total_out, cur = principal, 0.0, withdraw
