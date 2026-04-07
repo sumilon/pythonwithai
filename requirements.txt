@@ -9,8 +9,8 @@ jinja2>=3.1.5,<4.0
 # ⚠️  CVE-2024-53981 & CVE-2026-24486 fixed — upgraded from 0.0.9
 python-multipart>=0.0.22,<1.0
 
-# Settings management (type-safe, .env file support)
-pydantic-settings>=2.3.0,<3.0
+# .env file support
+python-dotenv>=1.0.0,<2.0
 
 # Stock data — must be >= 0.2.50 for Python 3.12/3.13 compatibility
 yfinance>=0.2.50,<1.0
