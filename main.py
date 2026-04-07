@@ -38,6 +38,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from core.config import settings
 from core.deps import templates
+from core.ratelimit import RateLimitMiddleware
 from routers import ai, calculator, pages, stock
 from services.ai import is_available as groq_ok
 from services.stock import USE_CURL
@@ -55,14 +56,37 @@ logger = logging.getLogger(__name__)
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Attach a minimal set of hardening headers to every HTTP response."""
 
+    # Content-Security-Policy:
+    #   default-src 'self'         — block anything not explicitly allowed
+    #   script-src  'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com
+    #                              — allow inline JS (templates) + common CDNs
+    #   style-src   'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com
+    #   font-src    'self' fonts.gstatic.com data:
+    #   img-src     'self' data: https:   — charts, favicons, remote images
+    #   connect-src 'self'         — XHR/fetch only to own origin
+    #   frame-ancestors 'none'     — equivalent to X-Frame-Options: DENY
+    #
+    # Tighten script-src by removing 'unsafe-inline' and adding nonces once
+    # the templates support it.
+    _CSP = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com; "
+        "font-src 'self' fonts.gstatic.com data:; "
+        "img-src 'self' data: https:; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none';"
+    )
+
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        response.headers["X-Content-Type-Options"]    = "nosniff"
-        response.headers["X-Frame-Options"]           = "DENY"
-        response.headers["X-XSS-Protection"]          = "0"  # disables legacy buggy filter; modern browsers ignore it
-        response.headers["Referrer-Policy"]           = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"]        = "geolocation=(), microphone=(), camera=()"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"]    = self._CSP
+        response.headers["X-Content-Type-Options"]     = "nosniff"
+        response.headers["X-Frame-Options"]            = "DENY"
+        response.headers["X-XSS-Protection"]           = "0"
+        response.headers["Referrer-Policy"]            = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"]         = "geolocation=(), microphone=(), camera=()"
+        response.headers["Strict-Transport-Security"]  = "max-age=31536000; includeSubDomains"
         return response
 
 
@@ -100,13 +124,21 @@ app = FastAPI(
 )
 
 # Middleware is applied in reverse registration order (last added = outermost).
-# Order here: SecurityHeaders → CORS → router handlers.
+# Execution order: RateLimit → SecurityHeaders → CORS → router handlers.
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
+)
+# Rate limiter is outermost — anonymous abusers are rejected before any
+# business logic or auth runs. 5 requests / 60 s per IP by default;
+# override via RATE_LIMIT_CALLS / RATE_LIMIT_PERIOD env vars if needed.
+app.add_middleware(
+    RateLimitMiddleware,
+    calls=settings.RATE_LIMIT_CALLS,
+    period=settings.RATE_LIMIT_PERIOD,
 )
 
 app.include_router(stock.router)

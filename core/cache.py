@@ -47,6 +47,14 @@ class TTLCache:
             while len(self._store) > self._maxsize:
                 self._store.popitem(last=False)
 
+    def delete(self, key: str) -> bool:
+        """Remove a single entry by key. Returns True if it existed."""
+        with self._lock:
+            if key in self._store:
+                del self._store[key]
+                return True
+            return False
+
     def clear(self) -> None:
         with self._lock:
             self._store.clear()

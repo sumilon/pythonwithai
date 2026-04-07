@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     # Wildcard "*" is only safe for local development.
     ALLOWED_ORIGINS: list[str] = ["*"]
 
+    # ── Rate limiting ─────────────────────────────────────────────────────────
+    # Max requests per IP per RATE_LIMIT_PERIOD seconds.
+    # Set RATE_LIMIT_CALLS=0 to disable (not recommended in production).
+    RATE_LIMIT_CALLS:  int = Field(default=10,  ge=0)
+    RATE_LIMIT_PERIOD: int = Field(default=60, ge=1)
+
     # ── Cache TTLs (seconds) ──────────────────────────────────────────────────
     QUOTE_CACHE_TTL: int   = Field(default=300,  ge=10)
     HISTORY_CACHE_TTL: int = Field(default=1800, ge=10)

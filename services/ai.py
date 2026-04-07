@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 
 from core.config import settings
 
@@ -23,6 +24,7 @@ except ImportError:
 
 _client: Groq | None = None  # type: ignore[valid-type]
 _last_key: str = ""
+_client_lock = threading.Lock()  # guards _client + _last_key across threads
 
 # Known user-friendly error substrings (matched case-insensitively).
 # These are safe to forward to the user; anything else is hidden.
@@ -33,6 +35,19 @@ _USER_ERRORS: tuple[str, ...] = (
     "model not found",
     "insufficient_quota",
 )
+
+# Characters stripped from prompts before forwarding to the API.
+# Null bytes and other control characters (except common whitespace) can
+# cause cryptic upstream errors or prompt-injection edge cases.
+_CTRL_CHARS = "".join(
+    chr(c) for c in range(32) if c not in (9, 10, 13)  # keep \t \n \r
+)
+_CTRL_TABLE = str.maketrans("", "", _CTRL_CHARS)
+
+
+def _sanitize_prompt(prompt: str) -> str:
+    """Strip null bytes and non-printable control characters from a prompt."""
+    return prompt.translate(_CTRL_TABLE).strip()
 
 
 def _get_client() -> Groq:  # type: ignore[return]
@@ -48,24 +63,27 @@ def _get_client() -> Groq:  # type: ignore[return]
             "Get a free key at console.groq.com"
         )
 
-    # Recreate client only if key changed (handles hot env-var updates)
-    if _client is None or key != _last_key:
-        _client   = Groq(api_key=key)
-        _last_key = key
-
-    return _client
+    # Lock guards both the read of _last_key and the write of _client so
+    # two concurrent requests cannot race to create duplicate client objects.
+    with _client_lock:
+        if _client is None or key != _last_key:
+            _client   = Groq(api_key=key)
+            _last_key = key
+        return _client
 
 
 def chat(prompt: str) -> str:
     """Send prompt to Groq and return the text response.
 
-    Raises RuntimeError with a safe, user-friendly message on failure.
-    Internal details are logged but never returned to callers.
+    Sanitizes the prompt first, then raises RuntimeError with a safe,
+    user-friendly message on failure. Internal details are logged but
+    never returned to callers.
     """
+    clean_prompt = _sanitize_prompt(prompt)
     try:
         res = _get_client().chat.completions.create(
             model=settings.GROQ_MODEL,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": clean_prompt}],
             max_tokens=settings.GROQ_MAX_TOKENS,
             timeout=30,  # fail fast — do not hang the event loop thread
         )
