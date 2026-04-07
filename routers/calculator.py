@@ -26,7 +26,7 @@ def _ctx(**kwargs) -> dict:
 
 @router.get("/calculator", response_class=HTMLResponse, tags=["Calculator"])
 async def calculator_get(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("calculator.html", {"request": request, **_ctx()})
+    return templates.TemplateResponse(request, "calculator.html", _ctx())
 
 
 @router.post("/calculator", response_class=HTMLResponse, tags=["Calculator"])
@@ -47,7 +47,7 @@ async def calculator_post(request: Request) -> HTMLResponse:
         logger.exception("Unexpected calculator error: calc_type=%r form=%r", calc_type, form)
         error = "Unexpected error. Please try again."
 
-    return templates.TemplateResponse("calculator.html", {
-        "request": request,
-        **_ctx(result=result, calc_type=calc_type, error=error),
-    })
+    return templates.TemplateResponse(
+        request, "calculator.html",
+        _ctx(result=result, calc_type=calc_type, error=error),
+    )
