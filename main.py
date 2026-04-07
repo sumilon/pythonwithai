@@ -10,8 +10,12 @@ Deploy (Cloud Run):
       --memory 512Mi --min-instances 0 --max-instances 3 \
       --set-env-vars GROQ_API_KEY=your_key_here
 
-Environment variables (see .env.example for full list):
+    Or build & push the provided Dockerfile:
+      docker build -t stocklens . && docker run -p 8080:8080 stocklens
+
+Environment variables (copy .env.example → .env for local dev):
     GROQ_API_KEY      required for /ai  (get free key at console.groq.com)
+    PRODUCTION        set true in Cloud Run — open CORS becomes a hard startup error
     ALLOWED_ORIGINS   comma-separated CORS origins — MUST lock down in prod
     GROQ_MODEL        override LLM model (default: llama-3.1-8b-instant)
     GROQ_MAX_TOKENS   override max tokens (default: 512)
@@ -19,6 +23,9 @@ Environment variables (see .env.example for full list):
     HISTORY_CACHE_TTL history cache TTL seconds (default: 1800)
     QUOTE_CACHE_MAX   max symbols in quote cache (default: 200)
     HISTORY_CACHE_MAX max entries in history cache (default: 100)
+
+Middleware execution order (outermost → innermost):
+    RateLimitMiddleware → SecurityHeadersMiddleware → GZipMiddleware → CORSMiddleware
 """
 import logging
 import sys
@@ -26,7 +33,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 # Ensure project root is on sys.path regardless of the launch directory.
-# This must run before any local imports.
 _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
@@ -35,13 +41,14 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from core.config import settings
 from core.deps import templates
 from core.ratelimit import RateLimitMiddleware
 from routers import ai, calculator, pages, stock
 from services.ai import is_available as groq_ok
-from services.stock import USE_CURL
+from services.stock import USE_CURL, _SESSION as curl_session
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,23 +58,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ── Security-headers middleware ───────────────────────────────────────────────
-
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Attach a minimal set of hardening headers to every HTTP response."""
+    """Attach security hardening headers to every HTTP response.
 
-    # Content-Security-Policy:
-    #   default-src 'self'         — block anything not explicitly allowed
-    #   script-src  'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com
-    #                              — allow inline JS (templates) + common CDNs
-    #   style-src   'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com
-    #   font-src    'self' fonts.gstatic.com data:
-    #   img-src     'self' data: https:   — charts, favicons, remote images
-    #   connect-src 'self'         — XHR/fetch only to own origin
-    #   frame-ancestors 'none'     — equivalent to X-Frame-Options: DENY
-    #
-    # Tighten script-src by removing 'unsafe-inline' and adding nonces once
-    # the templates support it.
+    CSP allows inline scripts/styles (required by current templates) and
+    whitelists jsDelivr, cdnjs, and Google Fonts. Tighten script-src by
+    removing 'unsafe-inline' and adding per-request nonces once the
+    templates are updated to support them.
+    """
+
     _CSP = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com; "
@@ -80,39 +79,47 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        response.headers["Content-Security-Policy"]    = self._CSP
-        response.headers["X-Content-Type-Options"]     = "nosniff"
-        response.headers["X-Frame-Options"]            = "DENY"
-        response.headers["X-XSS-Protection"]           = "0"
-        response.headers["Referrer-Policy"]            = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"]         = "geolocation=(), microphone=(), camera=()"
-        response.headers["Strict-Transport-Security"]  = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"]   = self._CSP
+        response.headers["X-Content-Type-Options"]    = "nosniff"
+        response.headers["X-Frame-Options"]           = "DENY"
+        response.headers["X-XSS-Protection"]          = "0"
+        response.headers["Referrer-Policy"]           = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"]        = "geolocation=(), microphone=(), camera=()"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
 
 
-# ── Lifespan: startup + graceful shutdown ─────────────────────────────────────
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Cloud Run sends SIGTERM before killing the container.
-    FastAPI's lifespan handles graceful shutdown — in-flight requests finish
-    before the process exits.
+    """Startup checks and graceful shutdown.
+
+    Cloud Run sends SIGTERM before terminating the container; FastAPI's
+    lifespan ensures in-flight requests drain before the process exits.
     """
     if settings.ALLOWED_ORIGINS == ["*"]:
-        logger.warning(
+        msg = (
             "CORS is open to ALL origins (ALLOWED_ORIGINS=*). "
-            "Set ALLOWED_ORIGINS to your domain before going to production."
+            "Set ALLOWED_ORIGINS to your domain in the Cloud Run environment variables."
         )
+        if settings.PRODUCTION:
+            # Hard failure — refuse to start with an open CORS policy in prod.
+            raise RuntimeError(msg)
+        logger.warning(msg)
+
     logger.info(
-        "Starting %s v%s | curl_cffi=%s | groq=%s",
-        settings.APP_TITLE, settings.APP_VERSION, USE_CURL, groq_ok(),
+        "Starting %s v%s | production=%s | curl_cffi=%s | groq=%s",
+        settings.APP_TITLE, settings.APP_VERSION,
+        settings.PRODUCTION, USE_CURL, groq_ok(),
     )
     yield
     logger.info("Shutting down — draining in-flight requests.")
+    if curl_session is not None:
+        try:
+            curl_session.close()
+            logger.info("curl_cffi session closed.")
+        except Exception:
+            pass
 
-
-# ── App factory ───────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title=settings.APP_TITLE,
@@ -123,18 +130,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Middleware is applied in reverse registration order (last added = outermost).
-# Execution order: RateLimit → SecurityHeaders → CORS → router handlers.
+# Middleware is registered in reverse execution order — the last one added
+# runs first. RateLimitMiddleware is added last so it is outermost, rejecting
+# abusive IPs before any business logic or auth runs.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_methods=["GET", "POST"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Accept"],
 )
-# Rate limiter is outermost — anonymous abusers are rejected before any
-# business logic or auth runs. 5 requests / 60 s per IP by default;
-# override via RATE_LIMIT_CALLS / RATE_LIMIT_PERIOD env vars if needed.
 app.add_middleware(
     RateLimitMiddleware,
     calls=settings.RATE_LIMIT_CALLS,
@@ -146,8 +152,6 @@ app.include_router(calculator.router)
 app.include_router(ai.router)
 app.include_router(pages.router)
 
-
-# ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def portfolio(request: Request) -> HTMLResponse:
@@ -165,15 +169,13 @@ async def health() -> dict:
     }
 
 
-# ── Global exception handler — never leak tracebacks to the client ────────────
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catch-all handler — logs the full traceback server-side, returns a
+    generic message to the client so internal details are never leaked."""
     logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
-
-# ── Local dev entrypoint ──────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn

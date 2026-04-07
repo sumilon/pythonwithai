@@ -10,16 +10,14 @@ from typing import Any
 
 
 class TTLCache:
-    """
-    Thread-safe TTL cache with a hard cap on the number of entries.
+    """Thread-safe TTL cache with a hard cap on the number of entries.
 
-    Eviction policy: LRU — when the cap is reached, the entry that was
-    accessed least recently is removed to make room for the new one.
-    Expired entries are also lazily removed on every read/write.
+    Eviction policy: LRU — when the cap is reached, the least-recently-used
+    entry is removed. Expired entries are lazily evicted on read/write.
     """
 
     def __init__(self, default_ttl: int = 300, maxsize: int = 200) -> None:
-        # OrderedDict preserves insertion/access order for LRU tracking
+        # OrderedDict gives O(1) move-to-end for LRU tracking.
         self._store: OrderedDict[str, tuple[Any, float]] = OrderedDict()
         self._lock    = threading.Lock()
         self._ttl     = default_ttl
@@ -33,7 +31,6 @@ class TTLCache:
             if time.monotonic() > expiry:
                 del self._store[key]
                 return None
-            # Move to end = mark as most recently used
             self._store.move_to_end(key)
             return value
 
@@ -43,12 +40,11 @@ class TTLCache:
             if key in self._store:
                 self._store.move_to_end(key)
             self._store[key] = (value, expiry)
-            # Evict LRU entry if over capacity
             while len(self._store) > self._maxsize:
                 self._store.popitem(last=False)
 
     def delete(self, key: str) -> bool:
-        """Remove a single entry by key. Returns True if it existed."""
+        """Remove a single entry. Returns True if the key existed."""
         with self._lock:
             if key in self._store:
                 del self._store[key]

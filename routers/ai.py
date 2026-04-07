@@ -26,7 +26,10 @@ async def api_chat(request: Request) -> JSONResponse:
     JSON endpoint consumed by the typewriter UI.
     Returns: {"answer": "..."} or {"error": "..."}
     """
-    body   = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON in request body."}, status_code=400)
     prompt = (body.get("prompt") or "").strip()
 
     if not prompt:

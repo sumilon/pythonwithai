@@ -1,11 +1,8 @@
 """
 services/stock.py
-=================
-Stock data via yfinance + curl_cffi browser impersonation.
+Stock data via yfinance with optional curl_cffi browser impersonation.
 
-IMPORTANT: Requires yfinance >= 0.2.50
-yfinance 0.2.40 is completely broken on Python 3.13 — returns no data.
-Fix: pip install --upgrade yfinance
+Requires yfinance >= 0.2.50 (earlier versions are broken on Python 3.12+).
 """
 import asyncio
 import logging
@@ -19,11 +16,11 @@ from core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# ── Cache instances (bounded LRU, sizes from settings) ────────────────────────
 quote_cache   = TTLCache(default_ttl=settings.QUOTE_CACHE_TTL,   maxsize=settings.QUOTE_CACHE_MAX)
 history_cache = TTLCache(default_ttl=settings.HISTORY_CACHE_TTL, maxsize=settings.HISTORY_CACHE_MAX)
 
-# ── curl_cffi session ─────────────────────────────────────────────────────────
+# Attempt to initialise a curl_cffi session for browser-impersonated requests.
+# This avoids Yahoo Finance 429 rate-limits that affect the default urllib backend.
 _SESSION = None
 USE_CURL = False
 
@@ -31,14 +28,19 @@ try:
     from curl_cffi import requests as curl_requests
     _SESSION = curl_requests.Session(impersonate="chrome")
     USE_CURL = True
-except Exception:
-    pass
+except ImportError:
+    logger.warning(
+        "curl_cffi not installed — falling back to yfinance default HTTP client. "
+        "Yahoo Finance 429 errors are more likely without browser impersonation."
+    )
+except Exception as _e:
+    logger.warning("curl_cffi session init failed (%s) — falling back to default HTTP client.", _e)
 
-# ── Symbol validation ─────────────────────────────────────────────────────────
 _SYM_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.^-")
 
 
 def validate_symbol(symbol: str) -> str:
+    """Normalise and validate a ticker symbol. Raises ValueError if invalid."""
     sym = symbol.strip().upper()
     if not sym or len(sym) > 20 or not _SYM_CHARS.issuperset(sym):
         raise ValueError(
@@ -47,8 +49,6 @@ def validate_symbol(symbol: str) -> str:
         )
     return sym
 
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _clean(val: Any) -> Any:
     """Recursively replace NaN/Inf with None for JSON safety."""
@@ -64,10 +64,9 @@ def _clean(val: Any) -> Any:
 
 
 def _safe_get(obj: Any, attr: str) -> Any:
-    """Safe attribute access — never raises, always returns clean value."""
+    """Return a clean attribute value, or None if the attribute raises."""
     try:
-        v = getattr(obj, attr, None)
-        return _clean(v)
+        return _clean(getattr(obj, attr, None))
     except Exception:
         return None
 
@@ -77,8 +76,6 @@ def _get_ticker(symbol: str) -> yf.Ticker:
         return yf.Ticker(symbol, session=_SESSION)
     return yf.Ticker(symbol)
 
-
-# ── Field definitions ─────────────────────────────────────────────────────────
 
 _FAST_KEYS = [
     "last_price", "previous_close", "open", "day_high", "day_low",
@@ -109,8 +106,6 @@ _INFO_KEYS = [
     "phone", "fullTimeEmployees",
 ]
 
-
-# ── Blocking fetches (run in executor) ────────────────────────────────────────
 
 def _fetch_quote(symbol: str) -> dict:
     t    = _get_ticker(symbol)
@@ -152,7 +147,7 @@ def _fetch_history(symbol: str, period: str) -> dict:
             "Verify the symbol and ensure yfinance is up to date."
         )
 
-    dates   = [str(d)[:10] for d in hist.index]
+    dates   = [d.strftime("%Y-%m-%d") for d in hist.index]
     opens   = _clean(hist["Open"].tolist())
     highs   = _clean(hist["High"].tolist())
     lows    = _clean(hist["Low"].tolist())
@@ -179,13 +174,10 @@ def _fetch_history(symbol: str, period: str) -> dict:
     return result
 
 
-# ── Public async API ──────────────────────────────────────────────────────────
-
 async def get_quote(symbol: str) -> dict:
     cached = quote_cache.get(symbol)
     if cached is not None:
         return cached
-    # asyncio.to_thread is the modern replacement for get_event_loop().run_in_executor()
     result = await asyncio.to_thread(_fetch_quote, symbol)
     quote_cache.set(symbol, result)
     return result

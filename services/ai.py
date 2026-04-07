@@ -12,8 +12,8 @@ from core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Groq is optional — initialise to None so the symbol always exists,
-# then attempt the real import. is_available() returns False when absent.
+# Groq is an optional dependency. Initialise to None so the name always
+# exists at module level; is_available() returns False when it is absent.
 Groq = None  # type: ignore[assignment,misc]
 _HAS_GROQ = False
 try:
@@ -24,10 +24,10 @@ except ImportError:
 
 _client: Groq | None = None  # type: ignore[valid-type]
 _last_key: str = ""
-_client_lock = threading.Lock()  # guards _client + _last_key across threads
+_client_lock = threading.Lock()
 
-# Known user-friendly error substrings (matched case-insensitively).
-# These are safe to forward to the user; anything else is hidden.
+# Error substrings that are safe to surface to the user as-is.
+# Anything not in this list is replaced with a generic message.
 _USER_ERRORS: tuple[str, ...] = (
     "invalid api key",
     "rate limit",
@@ -36,17 +36,14 @@ _USER_ERRORS: tuple[str, ...] = (
     "insufficient_quota",
 )
 
-# Characters stripped from prompts before forwarding to the API.
-# Null bytes and other control characters (except common whitespace) can
-# cause cryptic upstream errors or prompt-injection edge cases.
-_CTRL_CHARS = "".join(
-    chr(c) for c in range(32) if c not in (9, 10, 13)  # keep \t \n \r
-)
+# Translation table that strips null bytes and non-printable control
+# characters (except tab, newline, carriage-return) from user prompts.
+_CTRL_CHARS = "".join(chr(c) for c in range(32) if c not in (9, 10, 13))
 _CTRL_TABLE = str.maketrans("", "", _CTRL_CHARS)
 
 
 def _sanitize_prompt(prompt: str) -> str:
-    """Strip null bytes and non-printable control characters from a prompt."""
+    """Strip control characters that can cause cryptic upstream API errors."""
     return prompt.translate(_CTRL_TABLE).strip()
 
 
@@ -63,8 +60,7 @@ def _get_client() -> Groq:  # type: ignore[return]
             "Get a free key at console.groq.com"
         )
 
-    # Lock guards both the read of _last_key and the write of _client so
-    # two concurrent requests cannot race to create duplicate client objects.
+    # Re-create the client only when the key changes (e.g. hot-swap in dev).
     with _client_lock:
         if _client is None or key != _last_key:
             _client   = Groq(api_key=key)
@@ -73,11 +69,10 @@ def _get_client() -> Groq:  # type: ignore[return]
 
 
 def chat(prompt: str) -> str:
-    """Send prompt to Groq and return the text response.
+    """Send a prompt to Groq and return the text response.
 
-    Sanitizes the prompt first, then raises RuntimeError with a safe,
-    user-friendly message on failure. Internal details are logged but
-    never returned to callers.
+    Sanitises the prompt first. Raises RuntimeError with a user-safe
+    message on failure — internal details are logged, never returned.
     """
     clean_prompt = _sanitize_prompt(prompt)
     try:
@@ -85,23 +80,20 @@ def chat(prompt: str) -> str:
             model=settings.GROQ_MODEL,
             messages=[{"role": "user", "content": clean_prompt}],
             max_tokens=settings.GROQ_MAX_TOKENS,
-            timeout=30,  # fail fast — do not hang the event loop thread
+            timeout=30,
         )
         return res.choices[0].message.content.strip()
     except RuntimeError:
-        # Configuration errors — safe to re-raise as-is
         raise
     except Exception as exc:
         msg = str(exc).lower()
         for known in _USER_ERRORS:
             if known in msg:
-                # Re-raise with cleaner, safe message
                 raise RuntimeError(str(exc)) from exc
-        # Unknown / internal error — log details but hide from caller
         logger.exception("Groq API error (hidden from user)")
         raise RuntimeError("The AI service returned an error. Please try again shortly.") from exc
 
 
 def is_available() -> bool:
-    """Return True if groq is installed AND GROQ_API_KEY is set."""
+    """Return True if groq is installed and GROQ_API_KEY is set."""
     return _HAS_GROQ and bool(os.environ.get("GROQ_API_KEY", "").strip())

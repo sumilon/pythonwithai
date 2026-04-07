@@ -1,5 +1,5 @@
 """
-routers/calculator.py
+routers/calculator.py — financial calculator page (GET renders form, POST computes result).
 """
 import logging
 

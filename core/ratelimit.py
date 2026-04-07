@@ -1,14 +1,12 @@
 """
 core/ratelimit.py
-Lightweight in-process sliding-window rate limiter.
+In-process sliding-window rate limiter keyed by client IP.
 
-No external dependencies (no Redis, no slowapi).
-Works per real client IP, respecting X-Forwarded-For when the app sits
-behind a trusted reverse proxy (Cloud Run, nginx, etc.).
+No external dependencies (no Redis, no slowapi). Works correctly behind
+Cloud Run and nginx reverse proxies by reading X-Forwarded-For.
 
-Usage in main.py:
-    from core.ratelimit import RateLimitMiddleware
-    app.add_middleware(RateLimitMiddleware, calls=5, period=60)
+Usage:
+    app.add_middleware(RateLimitMiddleware, calls=10, period=60)
 """
 from __future__ import annotations
 
@@ -22,18 +20,25 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
-# Paths that are always exempt from rate limiting.
-# Add health / static asset paths here.
+# Requests to these path prefixes skip rate limiting entirely.
 _EXEMPT_PREFIXES: tuple[str, ...] = ("/health", "/static")
+
+# Hard cap on unique IPs tracked in memory at once. When exceeded, the
+# oldest entry is evicted to make room — prevents unbounded growth during
+# traffic spikes with many unique source IPs.
+_MAX_IPS: int = 5_000
+
+# Sweep stale IP buckets every N requests. Between sweeps, up to
+# _PURGE_EVERY extra expired entries may linger — acceptable on free tier.
+_PURGE_EVERY: int = 500
 
 
 def _real_ip(request: Request) -> str:
-    """
-    Extract the real client IP.
+    """Return the originating client IP.
 
-    Cloud Run (and most reverse proxies) set X-Forwarded-For.
-    We take the *first* entry — the original client — not the last hop.
-    Fall back to the direct connection IP when the header is absent.
+    Cloud Run prepends the real client IP to X-Forwarded-For. We take
+    the first entry rather than the last to avoid trusting a spoofed
+    value appended by the client itself.
     """
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
@@ -42,37 +47,45 @@ def _real_ip(request: Request) -> str:
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """
-    Sliding-window rate limiter keyed by client IP.
+    """Sliding-window rate limiter.
 
     Parameters
     ----------
-    calls  : maximum number of requests allowed per *period* seconds.
-    period : window length in seconds (default 60).
+    calls  : max requests allowed per *period* seconds per IP.
+    period : window length in seconds.
 
-    When the limit is exceeded the middleware returns HTTP 429 with a
-    Retry-After header so well-behaved clients can back off automatically.
+    Responds with HTTP 429 and a Retry-After header when the limit is
+    exceeded, so well-behaved clients know when to retry.
     """
 
     def __init__(self, app: ASGIApp, calls: int = 5, period: int = 60) -> None:
         super().__init__(app)
         self._calls  = calls
         self._period = period
-        # IP → deque of request timestamps (monotonic seconds)
         self._windows: dict[str, deque[float]] = defaultdict(deque)
         self._lock = threading.Lock()
+        self._request_count = 0
 
     def _is_rate_limited(self, ip: str) -> tuple[bool, int]:
-        """
-        Returns (limited, retry_after_seconds).
-        Cleans up timestamps older than the window on every call.
-        """
+        """Return (is_limited, retry_after_seconds) for the given IP."""
         now    = time.monotonic()
         cutoff = now - self._period
 
         with self._lock:
+            self._request_count += 1
+
+            # Periodically remove buckets for IPs that have gone quiet.
+            if self._request_count % _PURGE_EVERY == 0:
+                stale = [k for k, dq in self._windows.items()
+                         if not dq or dq[-1] < cutoff]
+                for k in stale:
+                    del self._windows[k]
+
+            # Enforce hard IP cap — evict the oldest bucket if needed.
+            while len(self._windows) >= _MAX_IPS and ip not in self._windows:
+                self._windows.pop(next(iter(self._windows)), None)
+
             dq = self._windows[ip]
-            # Evict timestamps outside the current window
             while dq and dq[0] < cutoff:
                 dq.popleft()
 
@@ -86,8 +99,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         path = request.url.path
 
-        # Exempt health checks and static assets
         if any(path.startswith(p) for p in _EXEMPT_PREFIXES):
+            return await call_next(request)
+
+        if self._calls == 0:
             return await call_next(request)
 
         ip = _real_ip(request)
