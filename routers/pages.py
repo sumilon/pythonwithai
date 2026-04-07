@@ -21,7 +21,7 @@ _PAGES: dict[str, str] = {
 for _path, _tpl in _PAGES.items():
     def _factory(tpl: str):
         async def _view(request: Request) -> HTMLResponse:
-            return templates.TemplateResponse(tpl, {"request": request})
+            return templates.TemplateResponse(request, tpl)
         name = tpl.replace(".html", "")
         _view.__name__     = name
         _view.__qualname__ = name

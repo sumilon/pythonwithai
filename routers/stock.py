@@ -13,7 +13,7 @@ router = APIRouter()
 
 @router.get("/stock", response_class=HTMLResponse, include_in_schema=False)
 async def stock_page(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("stock.html", {"request": request})
+    return templates.TemplateResponse(request, "stock.html")
 
 
 @router.get("/api/quote/{symbol}", tags=["Stock"])

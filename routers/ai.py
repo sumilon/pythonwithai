@@ -17,7 +17,7 @@ router = APIRouter()
 
 @router.get("/ai", response_class=HTMLResponse, tags=["AI"])
 async def ai_get(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("ai.html", {"request": request})
+    return templates.TemplateResponse(request, "ai.html")
 
 
 @router.post("/api/chat", tags=["AI"])

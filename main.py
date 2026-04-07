@@ -155,7 +155,7 @@ app.include_router(pages.router)
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def portfolio(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("portfolio.html", {"request": request})
+    return templates.TemplateResponse(request, "portfolio.html")
 
 
 @app.get("/health", tags=["System"])
