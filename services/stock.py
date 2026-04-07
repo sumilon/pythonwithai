@@ -9,6 +9,8 @@ import logging
 import math
 from typing import Any
 
+import numpy as np
+import pandas as pd
 import yfinance as yf
 
 from core.cache import TTLCache
@@ -51,7 +53,14 @@ def validate_symbol(symbol: str) -> str:
 
 
 def _clean(val: Any) -> Any:
-    """Recursively replace NaN/Inf with None for JSON safety."""
+    """Recursively replace NaN/Inf with None and coerce numpy scalars to
+    plain Python types so FastAPI's JSON encoder never chokes on them."""
+    # numpy integers → int
+    if isinstance(val, (np.integer,)):
+        return int(val)
+    # numpy floats → float (then fall through to nan/inf check below)
+    if isinstance(val, (np.floating,)):
+        val = float(val)
     if isinstance(val, float):
         if math.isnan(val) or math.isinf(val):
             return None
@@ -147,7 +156,7 @@ def _fetch_history(symbol: str, period: str) -> dict:
             "Verify the symbol and ensure yfinance is up to date."
         )
 
-    dates   = [d.strftime("%Y-%m-%d") for d in hist.index]
+    dates   = [d.date().isoformat() for d in hist.index]
     opens   = _clean(hist["Open"].tolist())
     highs   = _clean(hist["High"].tolist())
     lows    = _clean(hist["Low"].tolist())
@@ -156,7 +165,7 @@ def _fetch_history(symbol: str, period: str) -> dict:
 
     def _ma(n: int) -> list:
         series = hist["Close"].rolling(n).mean()
-        return [None if math.isnan(v) else round(float(v), 4) for v in series]
+        return [None if pd.isna(v) else round(float(v), 4) for v in series]
 
     result = {
         "symbol":  symbol,
