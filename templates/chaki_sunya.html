@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<meta name="description" content="ଛକି ଶୁନ — Chaki Sunya, the classic Odia notebook grid game, against an unbeatable AI."/>
+<meta name="theme-color" content="#12141c"/>
+<title>Chaki Sunya</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet"/>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+  body{
+    background:#12141c;
+    color:#e8eaf2;
+    font-family:'Space Grotesk',system-ui,sans-serif;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:0 0 3rem;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+
+  /* ── HEADER (matches the site's dark game-header language) ── */
+  .hdr{
+    width:100%;
+    max-width:460px;
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    gap:8px;
+    padding:clamp(16px,4vw,26px) clamp(12px,4vw,20px) clamp(10px,2vw,14px);
+  }
+  .hdr-title{
+    font-family:'Kalam',cursive;
+    font-weight:700;
+    font-size:clamp(1.6rem,7vw,2.3rem);
+    color:#f5a623;
+    line-height:1;
+  }
+  .hdr-sub{
+    font-size:.68rem;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:#7a7f95;
+    margin-top:2px;
+  }
+  .score-strip{
+    display:flex;
+    gap:8px;
+  }
+  .score-box{
+    background:#1a1d27;
+    border:1px solid #262a3a;
+    border-radius:9px;
+    padding:5px 10px;
+    text-align:center;
+    min-width:44px;
+  }
+  .score-lbl{font-size:8px;font-weight:700;letter-spacing:.06em;color:#7a7f95}
+  .score-val{font-size:1rem;font-weight:700;color:#e8eaf2}
+
+  /* ── NOTEBOOK PAGE — the signature element ── */
+  .page-wrap{
+    width:100%;
+    max-width:460px;
+    padding:0 clamp(12px,4vw,20px);
+  }
+  .notebook{
+    position:relative;
+    background:
+      repeating-linear-gradient(
+        #f6f2e4 0px, #f6f2e4 35px,
+        #b9c9dd 36px, #f6f2e4 37px
+      );
+    border-radius:6px;
+    box-shadow:0 18px 40px -14px rgba(0,0,0,.55), 0 2px 0 rgba(0,0,0,.15) inset;
+    padding:28px 20px 24px 44px;
+    overflow:hidden;
+  }
+  .notebook::before{ /* red margin rule */
+    content:"";
+    position:absolute;
+    left:30px; top:0; bottom:0;
+    width:2px;
+    background:#d68e94;
+    opacity:.85;
+  }
+  .notebook::after{ /* torn/punched edge feel */
+    content:"";
+    position:absolute;
+    left:0; top:0; bottom:0; width:10px;
+    background-image:radial-gradient(circle at 5px 0, transparent 4px, #12141c 4.2px);
+    background-size:10px 34px;
+    background-repeat:repeat-y;
+  }
+
+  .status{
+    font-family:'Kalam',cursive;
+    font-size:1.15rem;
+    color:#2b2f3a;
+    text-align:center;
+    margin-bottom:16px;
+    min-height:1.6em;
+    transform:rotate(-.4deg);
+  }
+  .status.win{color:#1f7a4c}
+  .status.lose{color:#b0392e}
+  .status.draw{color:#8a6d1f}
+
+  .board{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    grid-template-rows:repeat(3,1fr);
+    width:100%;
+    aspect-ratio:1;
+    max-width:320px;
+    margin:0 auto;
+    position:relative;
+  }
+  /* hand-ruled chalk grid, drawn with two slightly imperfect lines each */
+  .board::before, .board::after{
+    content:"";
+    position:absolute;
+    background:#2b2f3a;
+    opacity:.75;
+  }
+  .board::before{ left:33.2%; top:2%; bottom:2%; width:3px; border-radius:3px; transform:rotate(.6deg); box-shadow:calc(33.4% - .2px) 0 0 -1px #2b2f3a; }
+  .board::after{ left:66.6%; top:2%; bottom:2%; width:3px; border-radius:3px; transform:rotate(-.5deg); }
+
+  .cell{
+    position:relative;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    border:none;
+    background:transparent;
+  }
+  .cell:nth-child(-n+3){ }
+  .cell::before, .cell::after{ content:""; }
+  /* horizontal rules */
+  .board .cell{ border-top:3px solid transparent; border-bottom:3px solid transparent; }
+  .cell svg{ width:62%; height:62%; overflow:visible }
+  .cell path, .cell circle{
+    fill:none;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+  }
+  .cell.x path{ stroke:#b0392e; stroke-width:8; }
+  .cell.o circle{ stroke:#2f5fa8; stroke-width:8; }
+  .cell.win-cell path, .cell.win-cell circle{ stroke:#1f7a4c; }
+
+  .mark-in{ animation:markIn .22s ease-out; }
+  @keyframes markIn{ from{opacity:0; transform:scale(.6);} to{opacity:1; transform:scale(1);} }
+
+  /* horizontal grid rules drawn across the 3x3 */
+  .hrule{
+    position:absolute; left:2%; right:2%; height:3px; background:#2b2f3a; opacity:.75; border-radius:3px;
+  }
+  .hrule.r1{ top:33.4%; transform:rotate(-.4deg); }
+  .hrule.r2{ top:66.7%; transform:rotate(.5deg); }
+
+  /* ── CONTROLS ── */
+  .controls{
+    width:100%;
+    max-width:460px;
+    padding:18px clamp(12px,4vw,20px) 0;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+  }
+  .row{ display:flex; gap:10px; }
+  .field{ flex:1; }
+  .field-lbl{
+    font-size:.65rem;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:#7a7f95;
+    margin-bottom:5px;
+  }
+  .seg{
+    display:flex;
+    background:#1a1d27;
+    border:1px solid #262a3a;
+    border-radius:9px;
+    overflow:hidden;
+  }
+  .seg button{
+    flex:1;
+    padding:9px 6px;
+    background:transparent;
+    border:none;
+    color:#9aa0b4;
+    font-family:inherit;
+    font-size:.82rem;
+    font-weight:600;
+    cursor:pointer;
+    transition:background .15s, color .15s;
+  }
+  .seg button.active{ background:#f5a623; color:#12141c; }
+  .seg button:not(:last-child){ border-right:1px solid #262a3a; }
+
+  .btn-new{
+    width:100%;
+    padding:13px;
+    border-radius:11px;
+    border:none;
+    background:#f5a623;
+    color:#12141c;
+    font-family:inherit;
+    font-weight:700;
+    font-size:.95rem;
+    cursor:pointer;
+    transition:transform .1s, opacity .15s;
+  }
+  .btn-new:active{ transform:scale(.98); }
+  .btn-new[disabled]{ opacity:.55; cursor:default; }
+
+  .thinking{
+    text-align:center;
+    font-size:.75rem;
+    color:#7a7f95;
+    min-height:1.4em;
+    margin-top:2px;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .mark-in{ animation:none; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="hdr">
+    <div>
+      <div class="hdr-title">ଛକି ଶୁନ</div>
+      <div class="hdr-sub">Chaki Sunya</div>
+    </div>
+    <div class="score-strip">
+      <div class="score-box"><div class="score-lbl">YOU</div><div class="score-val" id="scoreYou">0</div></div>
+      <div class="score-box"><div class="score-lbl">AI</div><div class="score-val" id="scoreAi">0</div></div>
+      <div class="score-box"><div class="score-lbl">DRAW</div><div class="score-val" id="scoreDraw">0</div></div>
+    </div>
+  </div>
+
+  <div class="page-wrap">
+    <div class="notebook">
+      <div class="status" id="status">Your move — place an X</div>
+      <div class="board" id="board">
+        <div class="hrule r1"></div>
+        <div class="hrule r2"></div>
+        <!-- 9 cells injected by JS -->
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="row">
+      <div class="field">
+        <div class="field-lbl">Play as</div>
+        <div class="seg" id="symbolSeg">
+          <button data-val="X" class="active">X</button>
+          <button data-val="O">O</button>
+        </div>
+      </div>
+      <div class="field">
+        <div class="field-lbl">Difficulty</div>
+        <div class="seg" id="diffSeg">
+          <button data-val="easy">Easy</button>
+          <button data-val="medium">Medium</button>
+          <button data-val="unbeatable" class="active">Unbeatable</button>
+        </div>
+      </div>
+    </div>
+    <button class="btn-new" id="newGame">New game</button>
+    <div class="thinking" id="thinking">&nbsp;</div>
+  </div>
+
+<script>
+(function(){
+  const boardEl   = document.getElementById('board');
+  const statusEl  = document.getElementById('status');
+  const thinkEl   = document.getElementById('thinking');
+  const newBtn    = document.getElementById('newGame');
+  const symbolSeg = document.getElementById('symbolSeg');
+  const diffSeg   = document.getElementById('diffSeg');
+  const scoreYouEl  = document.getElementById('scoreYou');
+  const scoreAiEl   = document.getElementById('scoreAi');
+  const scoreDrawEl = document.getElementById('scoreDraw');
+
+  let board = Array(9).fill(null);
+  let humanSymbol = 'X';
+  let difficulty  = 'unbeatable';
+  let aiSymbol    = 'O';
+  let gameOver    = false;
+  let locked      = false; // true while waiting on the AI
+  let score = { you: 0, ai: 0, draw: 0 };
+
+  // build the 9 cells once
+  const cells = [];
+  for (let i = 0; i < 9; i++){
+    const c = document.createElement('button');
+    c.className = 'cell';
+    c.setAttribute('aria-label', 'cell ' + (i+1));
+    c.addEventListener('click', () => onCellClick(i));
+    boardEl.appendChild(c);
+    cells.push(c);
+  }
+
+  function otherSymbol(s){ return s === 'X' ? 'O' : 'X'; }
+
+  function markSvg(symbol){
+    if (symbol === 'X'){
+      return '<svg viewBox="0 0 100 100"><path d="M22 20 Q50 48 78 82"/><path d="M79 21 Q50 50 21 80"/></svg>';
+    }
+    return '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="34"/></svg>';
+  }
+
+  function render(winLine){
+    cells.forEach((c, i) => {
+      c.classList.remove('x','o','win-cell');
+      c.innerHTML = '';
+      if (board[i]){
+        c.classList.add(board[i] === 'X' ? 'x' : 'o');
+        c.innerHTML = markSvg(board[i]);
+        c.querySelector('svg').classList.add('mark-in');
+      }
+      if (winLine && winLine.includes(i)) c.classList.add('win-cell');
+    });
+  }
+
+  function setStatus(text, kind){
+    statusEl.textContent = text;
+    statusEl.className = 'status' + (kind ? (' ' + kind) : '');
+  }
+
+  async function checkWinner(b){
+    const res = await fetch('/api/chaki-sunya/check-winner', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ board: b })
+    });
+    if (!res.ok) throw new Error('check-winner failed');
+    const data = await res.json();
+    return data.result; // null | {winner, line}
+  }
+
+  async function requestAiMove(b){
+    const res = await fetch('/api/chaki-sunya/ai-move', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ board: b, ai_symbol: aiSymbol, difficulty })
+    });
+    if (!res.ok) throw new Error('ai-move failed');
+    const data = await res.json();
+    return data.move;
+  }
+
+  function finish(result){
+    gameOver = true;
+    locked = true;
+    thinkEl.textContent = '';
+    if (result.winner === 'draw'){
+      setStatus("It's a draw — chalk it up to a good game.", 'draw');
+      score.draw++;
+    } else if (result.winner === humanSymbol){
+      setStatus('You win! 🎉', 'win');
+      score.you++;
+    } else {
+      setStatus('AI wins this round.', 'lose');
+      score.ai++;
+    }
+    scoreYouEl.textContent  = score.you;
+    scoreAiEl.textContent   = score.ai;
+    scoreDrawEl.textContent = score.draw;
+    render(result.line);
+  }
+
+  async function onCellClick(i){
+    if (gameOver || locked || board[i] !== null) return;
+    board[i] = humanSymbol;
+    render();
+
+    locked = true;
+    try {
+      const result = await checkWinner(board);
+      if (result){ finish(result); return; }
+
+      thinkEl.textContent = 'AI is thinking…';
+      const move = await requestAiMove(board);
+      board[move] = aiSymbol;
+      render();
+
+      const result2 = await checkWinner(board);
+      thinkEl.textContent = '';
+      if (result2){ finish(result2); return; }
+
+      setStatus('Your move — place ' + humanSymbol, '');
+      locked = false;
+    } catch (err){
+      thinkEl.textContent = '';
+      setStatus('Something went wrong — start a new game.', 'lose');
+    }
+  }
+
+  async function maybeOpenWithAi(){
+    if (humanSymbol === aiSymbol) return; // safety, never true
+    if (aiSymbol && board.every(c => c === null) && humanSymbol !== 'X' ? false : false){}
+  }
+
+  async function newGame(){
+    board = Array(9).fill(null);
+    gameOver = false;
+    locked = false;
+    render();
+
+    if (humanSymbol === 'O'){
+      // AI (X) opens
+      locked = true;
+      setStatus('AI opens…', '');
+      thinkEl.textContent = 'AI is thinking…';
+      try {
+        const move = await requestAiMove(board);
+        board[move] = aiSymbol;
+        render();
+        thinkEl.textContent = '';
+        setStatus('Your move — place ' + humanSymbol, '');
+      } catch (err){
+        thinkEl.textContent = '';
+      }
+      locked = false;
+    } else {
+      setStatus('Your move — place ' + humanSymbol, '');
+    }
+  }
+
+  function setActive(seg, val){
+    [...seg.children].forEach(b => b.classList.toggle('active', b.dataset.val === val));
+  }
+
+  symbolSeg.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    humanSymbol = btn.dataset.val;
+    aiSymbol = otherSymbol(humanSymbol);
+    setActive(symbolSeg, humanSymbol);
+    newGame();
+  });
+
+  diffSeg.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    difficulty = btn.dataset.val;
+    setActive(diffSeg, difficulty);
+  });
+
+  newBtn.addEventListener('click', newGame);
+
+  newGame();
+})();
+</script>
+</body>
+</html>
