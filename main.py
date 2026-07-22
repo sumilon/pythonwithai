@@ -46,7 +46,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from core.config import settings
 from core.deps import templates
 from core.ratelimit import RateLimitMiddleware
-from routers import ai, calculator, pages, stock
+from routers import ai, calculator, chaki_sunya, pages, stock
 from services.ai import is_available as groq_ok
 from services.stock import USE_CURL, _SESSION as curl_session
 
@@ -150,6 +150,7 @@ app.add_middleware(
 app.include_router(stock.router)
 app.include_router(calculator.router)
 app.include_router(ai.router)
+app.include_router(chaki_sunya.router)
 app.include_router(pages.router)
 
 
